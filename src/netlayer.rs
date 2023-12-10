@@ -2,3 +2,8 @@
 
 #[cfg(feature = "netlayer-onion")]
 pub mod onion;
+
+pub trait Netlayer {
+    fn connect();
+    fn accept();
+}

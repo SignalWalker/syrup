@@ -16,11 +16,16 @@ keywords = [ "ocap", "ocapn", "object-capabilities" ]
 # meta
 thiserror = "^1.0"
 tracing = "^0.1"
+
 # captp
+
 # locators
 # url = "^2.4"
+
 # netlayers
+## tor
+arti-client = { version = "^0.12", features = ["onion-service-client"], optional = true }
 
 [features]
 default = ["netlayer-onion"]
-netlayer-onion = []
+netlayer-onion = ["dep:arti-client"]
