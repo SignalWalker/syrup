@@ -1,0 +1,26 @@
+[package]
+name = "rexa"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ash Walker <ash@ashwalker.net>"]
+
+description = "An implementation of OCapN, a protocol for secure peer-to-peer networking."
+readme = true
+repository = "https://github.com/SignalWalker/rexa"
+license = "LGPL-3.0-or-later"
+
+categories = [ "asynchronous", "authentication", "concurrency", "cryptography", "network-programming" ]
+keywords = [ "ocap", "ocapn", "object-capabilities" ]
+
+[dependencies]
+# meta
+thiserror = "^1.0"
+tracing = "^0.1"
+# captp
+# locators
+# url = "^2.4"
+# netlayers
+
+[features]
+default = ["netlayer-onion"]
+netlayer-onion = []
