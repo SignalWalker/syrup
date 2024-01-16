@@ -10,7 +10,7 @@ pub trait Netlayer<Socket>: Sized {
     type Error;
 
     /// Attempt to open a new connection to the specified locator.
-    async fn connect<HintKey: PartialEq + Eq + std::hash::Hash, HintValue>(
+    async fn connect<HintKey, HintValue>(
         &self,
         locator: &NodeLocator<HintKey, HintValue>,
     ) -> Result<CapTpSession<Socket>, Self::Error>;

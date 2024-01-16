@@ -58,9 +58,17 @@ impl<'input> Container<'input> {
                         from = Some(With::fallible(meta.value()?.parse()?));
                         into = Some(With::fallible(meta.value()?.parse()?));
                     }
-                    "bound" => {
-                        des_bounds = Some(Punctuated::parse_terminated(meta.value()?)?);
-                        ser_bounds = des_bounds.clone();
+                    "deserialize_bound" => {
+                        des_bounds =
+                            Some(Punctuated::<WherePredicate, Token![;]>::parse_terminated(
+                                meta.value()?,
+                            )?)
+                    }
+                    "serialize_bound" => {
+                        ser_bounds =
+                            Some(Punctuated::<WherePredicate, Token![;]>::parse_terminated(
+                                meta.value()?,
+                            )?)
                     }
                     _ => return Err(meta.error(format!("unrecognized syrup attribute: {attr_id}"))),
                 }
@@ -116,8 +124,8 @@ impl<'input> Container<'input> {
     fn generics(
         syrup_crate: &Path,
         generics: &'input Generics,
-        des_bounds: Option<Punctuated<WherePredicate, Token![,]>>,
-        ser_bounds: Option<Punctuated<WherePredicate, Token![,]>>,
+        des_bounds: Option<impl IntoIterator<Item = WherePredicate>>,
+        ser_bounds: Option<impl IntoIterator<Item = WherePredicate>>,
     ) -> Result<(Lifetime, Generics, Generics), syn::Error> {
         let mut ser_generics = generics.clone();
         match ser_bounds {

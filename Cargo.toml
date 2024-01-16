@@ -1,4 +1,3 @@
-workspace = { members = [ "lib/syrup","lib/syrup-derive", "lib/syrup-proc"] }
 [package]
 name = "rexa"
 version = "0.1.0"

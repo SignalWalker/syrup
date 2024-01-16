@@ -31,7 +31,11 @@
         pkgs = nixpkgsFor.${system};
       in {
         default = pkgs.mkShell (let
-          python = pkgs.python312;
+          python = pkgs.python311.withPackages (ps:
+            with ps; [
+              cryptography
+              stem
+            ]);
         in {
           nativeBuildInputs = [
             pkgs.pkg-config
@@ -43,10 +47,13 @@
           ];
           packages = [
             python
+            pkgs.tor
           ];
           env.PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig:${pkgs.sqlite.dev}/lib/pkgconfig";
+
           env.REXA_OCAPN_TEST_SUITE_DIR = toString inputs.ocapn-test-suite;
           env.REXA_PYTHON_PATH = "${python}/bin/python";
+
           LD_LIBRARY_PATH = std.concatStringsSep ":" ["${pkgs.sqlite.out}/lib" "${pkgs.openssl.out}/lib"];
         });
       });

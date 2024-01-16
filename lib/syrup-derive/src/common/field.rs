@@ -6,6 +6,7 @@ use quote::{quote, ToTokens};
 use syn::{
     parse_quote, punctuated::Punctuated, spanned::Spanned, ConstParam, Expr, GenericParam,
     Generics, Ident, Lifetime, LifetimeParam, Path, PathArguments, Token, Type, TypeParam,
+    WherePredicate,
 };
 
 pub struct Field<'input> {
@@ -89,41 +90,93 @@ impl<'input> Field<'input> {
         }
 
         let (ser_generics, des_generics) = {
-            fn extract_params<'p>(
-                params: impl IntoIterator<Item = &'p GenericParam>,
-            ) -> (
-                HashMap<&'p Ident, &'p GenericParam>,
-                HashMap<&'p Ident, &'p GenericParam>,
-                HashMap<&'p Ident, &'p GenericParam>,
-            ) {
-                let mut lts = HashMap::new();
-                let mut tys = HashMap::new();
-                let mut cnsts = HashMap::new();
-                for p in params {
-                    match p {
-                        GenericParam::Lifetime(lt) => {
-                            lts.insert(&lt.lifetime.ident, p);
-                        }
-                        GenericParam::Type(t) => {
-                            tys.insert(&t.ident, p);
-                        }
-                        GenericParam::Const(c) => {
-                            cnsts.insert(&c.ident, p);
-                        }
-                    };
-                }
-                (lts, tys, cnsts)
+            struct ParamData<'p> {
+                generics: Generics,
+                lifetimes: HashMap<&'p Ident, &'p GenericParam>,
+                types: HashMap<&'p Ident, &'p GenericParam>,
+                consts: HashMap<&'p Ident, &'p GenericParam>,
+                predicates: HashMap<&'p Ident, &'p WherePredicate>,
             }
-            let (ser_lifetimes, ser_types, ser_consts) = extract_params(&c_ser_generics.params);
-            let (des_lifetimes, des_types, des_consts) = extract_params(&c_des_generics.params);
-
-            let mut ser_generics = Generics {
-                lt_token: Some(Token![<](Span::call_site())),
-                params: Punctuated::new(),
-                gt_token: Some(Token![>](Span::call_site())),
-                where_clause: None,
-            };
-            let mut des_generics = ser_generics.clone();
+            impl<'p> ParamData<'p> {
+                fn from_params(
+                    params: impl IntoIterator<Item = &'p GenericParam>,
+                    clauses: Option<impl IntoIterator<Item = &'p WherePredicate>>,
+                ) -> Self {
+                    let mut lts = HashMap::new();
+                    let mut tys = HashMap::new();
+                    let mut cnsts = HashMap::new();
+                    for p in params {
+                        match p {
+                            GenericParam::Lifetime(lt) => {
+                                lts.insert(&lt.lifetime.ident, p);
+                            }
+                            GenericParam::Type(t) => {
+                                tys.insert(&t.ident, p);
+                            }
+                            GenericParam::Const(c) => {
+                                cnsts.insert(&c.ident, p);
+                            }
+                        };
+                    }
+                    let mut preds = HashMap::new();
+                    if let Some(clauses) = clauses {
+                        for clause in clauses {
+                            match &clause {
+                                WherePredicate::Lifetime(lt) => {
+                                    preds.insert(&lt.lifetime.ident, clause);
+                                }
+                                WherePredicate::Type(t) => match &t.bounded_ty {
+                                    Type::Path(p) => match p.path.get_ident() {
+                                        Some(id) => {
+                                            preds.insert(id, clause);
+                                        }
+                                        None => todo!(),
+                                    },
+                                    _ => todo!(),
+                                },
+                                _ => todo!("get field generic where predicates for {clause:?}"),
+                            }
+                        }
+                    }
+                    Self {
+                        generics: Generics {
+                            lt_token: Some(Token![<](Span::call_site())),
+                            params: Punctuated::new(),
+                            gt_token: Some(Token![>](Span::call_site())),
+                            where_clause: None,
+                        },
+                        lifetimes: lts,
+                        types: tys,
+                        consts: cnsts,
+                        predicates: preds,
+                    }
+                }
+                fn insert_predicate(&mut self, id: &Ident) {
+                    if let Some(&w) = self.predicates.get(&id) {
+                        self.generics.make_where_clause().predicates.push(w.clone());
+                    }
+                }
+                fn insert_lt(&mut self, lt: &Lifetime) {
+                    if let Some(&p) = self.lifetimes.get(&lt.ident) {
+                        self.generics.params.push(p.clone());
+                    }
+                    self.insert_predicate(&lt.ident);
+                }
+                fn insert_type_ident(&mut self, id: &Ident) {
+                    if let Some(&p) = self.types.get(id) {
+                        self.generics.params.push(p.clone());
+                    }
+                    self.insert_predicate(id);
+                }
+            }
+            let mut ser_data = ParamData::from_params(
+                &c_ser_generics.params,
+                c_ser_generics.where_clause.as_ref().map(|w| &w.predicates),
+            );
+            let mut des_data = ParamData::from_params(
+                &c_des_generics.params,
+                c_des_generics.where_clause.as_ref().map(|w| &w.predicates),
+            );
 
             let mut type_stack = vec![&field.ty];
             while let Some(ty) = type_stack.pop() {
@@ -131,12 +184,8 @@ impl<'input> Field<'input> {
                     Type::Path(p) => match p.qself.as_ref() {
                         None => match p.path.get_ident() {
                             Some(i) => {
-                                if let Some(&p) = ser_types.get(i) {
-                                    ser_generics.params.push(p.clone());
-                                }
-                                if let Some(&p) = des_types.get(i) {
-                                    des_generics.params.push(p.clone());
-                                }
+                                ser_data.insert_type_ident(i);
+                                des_data.insert_type_ident(i);
                             }
                             None => {
                                 for segment in &p.path.segments {
@@ -145,14 +194,8 @@ impl<'input> Field<'input> {
                                         for arg in &args.args {
                                             match arg {
                                                 syn::GenericArgument::Lifetime(lt) => {
-                                                    if let Some(&lt) = ser_lifetimes.get(&lt.ident)
-                                                    {
-                                                        ser_generics.params.push(lt.clone());
-                                                    }
-                                                    if let Some(&lt) = des_lifetimes.get(&lt.ident)
-                                                    {
-                                                        des_generics.params.push(lt.clone());
-                                                    }
+                                                    ser_data.insert_lt(lt);
+                                                    des_data.insert_lt(lt);
                                                 }
                                                 syn::GenericArgument::Type(t) => {
                                                     type_stack.push(t);
@@ -188,7 +231,7 @@ impl<'input> Field<'input> {
                 }
             }
 
-            (ser_generics, des_generics)
+            (ser_data.generics, des_data.generics)
         };
 
         Ok(Self {

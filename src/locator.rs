@@ -8,9 +8,11 @@ mod onion;
 
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-#[syrup(name = "ocapn-node")]
-pub struct NodeLocator<HintKey: PartialEq + Eq + std::hash::Hash, HintValue> {
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[syrup(name = "ocapn-node",
+        deserialize_bound = HintKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; HintValue: Deserialize<'__de>
+        )]
+pub struct NodeLocator<HintKey, HintValue> {
     pub designator: String,
     #[syrup(as_symbol)]
     pub transport: String,
@@ -18,9 +20,22 @@ pub struct NodeLocator<HintKey: PartialEq + Eq + std::hash::Hash, HintValue> {
     pub hints: HashMap<HintKey, HintValue>,
 }
 
-impl<HKey: std::fmt::Display + PartialEq + Eq + std::hash::Hash, HVal: std::fmt::Display>
-    NodeLocator<HKey, HVal>
+impl<HintKey: PartialEq + Eq + std::hash::Hash, HintValue: PartialEq> PartialEq
+    for NodeLocator<HintKey, HintValue>
 {
+    fn eq(&self, other: &Self) -> bool {
+        self.designator == other.designator
+            && self.transport == other.transport
+            && self.hints == other.hints
+    }
+}
+
+impl<HintKey: PartialEq + Eq + std::hash::Hash, HintValue: PartialEq + Eq> Eq
+    for NodeLocator<HintKey, HintValue>
+{
+}
+
+impl<HKey: std::fmt::Display, HVal: std::fmt::Display> NodeLocator<HKey, HVal> {
     /// Serialize this locator to a URI, as described in the
     /// [Locator specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Locators.md#uri-serialization).
     pub fn to_uri(&self) -> String {
@@ -44,14 +59,28 @@ impl<HKey: std::fmt::Display + PartialEq + Eq + std::hash::Hash, HVal: std::fmt:
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-#[syrup(name = "ocapn-sturdyref")]
-pub struct SturdyRefLocator<HintKey: PartialEq + Eq + std::hash::Hash, HintValue> {
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[syrup(name = "ocapn-sturdyref",
+            deserialize_bound = HintKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; HintValue: Deserialize<'__de>
+
+)]
+pub struct SturdyRefLocator<HintKey, HintValue> {
     pub node_locator: NodeLocator<HintKey, HintValue>,
     pub swiss_num: String,
 }
 
-impl<HKey: PartialEq + Eq + std::hash::Hash, HVal> SturdyRefLocator<HKey, HVal> {}
+impl<HKey: PartialEq + Eq + std::hash::Hash, HVal: PartialEq> PartialEq
+    for SturdyRefLocator<HKey, HVal>
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.node_locator == other.node_locator && self.swiss_num == other.swiss_num
+    }
+}
+
+impl<HKey: PartialEq + Eq + std::hash::Hash, HVal: PartialEq + Eq> Eq
+    for SturdyRefLocator<HKey, HVal>
+{
+}
 
 #[cfg(test)]
 mod test {

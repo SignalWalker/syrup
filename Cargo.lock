@@ -2739,10 +2739,7 @@ name = "syrup"
 version = "0.1.0"
 dependencies = [
  "ibig",
- "lazy_static",
  "nom",
- "proptest",
- "serde",
  "syrup-derive",
  "syrup-proc",
  "thiserror",

@@ -34,7 +34,7 @@ impl<R: Runtime> Netlayer<DataStream> for OnionNetlayer<R> {
     type Error = arti_client::Error;
 
     #[inline]
-    async fn connect<HintKey: PartialEq + Eq + std::hash::Hash, HintValue>(
+    async fn connect<HintKey, HintValue>(
         &self,
         locator: &NodeLocator<HintKey, HintValue>,
     ) -> Result<CapTpSession<DataStream>, Self::Error> {
