@@ -4,7 +4,5 @@ pub mod captp;
 pub mod locator;
 /// Secure communication channels between sessions
 pub mod netlayer;
-// /// Serialization format for messages between actors separated by a CapTP boundary
-// pub mod syrup;
 
-pub mod syrup_test;
+pub use syrup;
