@@ -1,6 +1,6 @@
 //! - [Draft Specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Locators.md)
 
-use syrup::{Deserialize, Serialize, Symbol};
+use syrup::{Deserialize, Serialize};
 
 /// Onion-specific extensions to the locator module.
 #[cfg(feature = "netlayer-onion")]

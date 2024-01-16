@@ -3,6 +3,9 @@ pub use syrup_derive::{Deserialize, Serialize};
 pub mod de;
 pub mod ser;
 
+pub use de::Deserialize;
+pub use ser::Serialize;
+
 #[cfg(feature = "serde")]
 pub mod serde;
 
