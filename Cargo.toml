@@ -1,3 +1,4 @@
+workspace = { members = [ "lib/syrup","lib/syrup-derive", "lib/syrup-proc"] }
 [package]
 name = "rexa"
 version = "0.1.0"
@@ -22,10 +23,21 @@ tracing = "^0.1"
 # locators
 # url = "^2.4"
 
+# syrup
+syrup = { path = "lib/syrup" }
+
 # netlayers
+futures = "^0.3"
 ## tor
-arti-client = { version = "^0.12", features = ["onion-service-client"], optional = true }
+arti-client = { version = "^0.12", git = "https://gitlab.torproject.org/tpo/core/arti", features = ["onion-service-client"], optional = true }
+tor-rtcompat = { version = "^0.9", git = "https://gitlab.torproject.org/tpo/core/arti", features = [], optional = true }
+
+[dev-dependencies]
+proptest = { version = "^1.4" }
+lazy_static = { version = "^1.4" }
+
+[build-dependencies]
 
 [features]
 default = ["netlayer-onion"]
-netlayer-onion = ["dep:arti-client"]
+netlayer-onion = ["dep:arti-client", "dep:tor-rtcompat"]

@@ -23,6 +23,10 @@ Not yet fit for actual use; wait until [1.0.0](https://github.com/SignalWalker/r
 - Compliance with the final version of [OCapN](https://github.com/ocapn/ocapn)
   - Passes the [OCapN test suite](https://github.com/ocapn/ocapn-test-suite)
 
+## Todo
+
+- [ ] Agnosticize with regard to async runtime
+
 ## Etymology
 
 - "R" as in "Rust"
