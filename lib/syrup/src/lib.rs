@@ -9,6 +9,11 @@ pub use ser::Serialize;
 #[cfg(feature = "serde")]
 pub mod serde;
 
+pub mod extra;
+
+#[cfg(feature = "async-stream")]
+pub mod async_stream;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Symbol<T>(pub T);
 
@@ -113,7 +118,10 @@ impl<'input> nom::error::ParseError<&'input [u8]> for Error<'input> {
 impl<'input> From<nom::Err<Error<'input>>> for Error<'input> {
     fn from(value: nom::Err<Error<'input>>) -> Self {
         match value {
-            nom::Err::Incomplete(_) => todo!(),
+            nom::Err::Incomplete(n) => Self {
+                input: None,
+                kind: ErrorKind::Incomplete(n),
+            },
             nom::Err::Error(e) => e,
             nom::Err::Failure(e) => e,
         }
@@ -135,7 +143,27 @@ impl<'input> nom::error::FromExternalError<&'input [u8], ibig::error::OutOfBound
     }
 }
 
-impl<'input> de::DeserializeError for Error<'input> {}
+impl<'input> de::DeserializeError for Error<'input> {
+    fn needed(&self) -> Option<nom::Needed> {
+        match self.kind {
+            ErrorKind::Incomplete(n) => Some(n),
+            _ => None,
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! record_struct {
+    ($Rec:ident, $syrup_name:expr => $($field:ident: $FieldTy:path),+) => {
+        #[derive($crate::Serialize, $crate::Deserialize)]
+        #[syrup(crate = $crate, name = $syrup_name)]
+        struct $Rec {
+            $(
+                $field: $FieldTy
+            ),+
+        }
+    }
+}
 
 #[cfg(test)]
 pub(crate) mod test {
@@ -248,5 +276,121 @@ pub mod optional_map {
         de: D,
     ) -> Result<HashMap<K, V, S>, D::Error> {
         de.deserialize_any(OptionalMapVisitor::new())
+    }
+}
+
+pub mod bytes {
+    pub mod vec {
+        use crate::{
+            de::{Deserializer, Visitor},
+            ser::Serializer,
+        };
+
+        pub fn serialize<S: Serializer>(bytes: &Vec<u8>, ser: S) -> Result<S::Ok, S::Error> {
+            ser.serialize_bytes(bytes)
+        }
+
+        pub fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<Vec<u8>, D::Error> {
+            struct __Visitor;
+            impl<'de> Visitor<'de> for __Visitor {
+                type Value = Vec<u8>;
+
+                fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    f.write_str("raw bytes")
+                }
+
+                fn visit_byte_buf<E: crate::de::DeserializeError>(
+                    self,
+                    v: Vec<u8>,
+                ) -> Result<Self::Value, E> {
+                    Ok(v)
+                }
+
+                fn visit_bytes<E: crate::de::DeserializeError>(
+                    self,
+                    v: &'de [u8],
+                ) -> Result<Self::Value, E> {
+                    Ok(v.to_owned())
+                }
+            }
+            de.deserialize_byte_buf(__Visitor)
+        }
+    }
+    pub mod slice {
+        use crate::{
+            de::{Deserializer, Visitor},
+            ser::Serializer,
+        };
+
+        pub fn serialize<S: Serializer>(bytes: &[u8], ser: S) -> Result<S::Ok, S::Error> {
+            ser.serialize_bytes(bytes)
+        }
+
+        pub fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<&'de [u8], D::Error> {
+            struct __Visitor;
+            impl<'de> Visitor<'de> for __Visitor {
+                type Value = &'de [u8];
+
+                fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    f.write_str("raw byte slice")
+                }
+
+                fn visit_bytes<E: crate::de::DeserializeError>(
+                    self,
+                    v: &'de [u8],
+                ) -> Result<Self::Value, E> {
+                    Ok(v)
+                }
+            }
+            de.deserialize_bytes(__Visitor)
+        }
+    }
+    pub mod array {
+        use std::marker::PhantomData;
+
+        use crate::{de::Deserializer, ser::Serializer};
+
+        #[derive(Default)]
+        pub struct Visitor<const LEN: usize>(PhantomData<[u8; LEN]>);
+        impl<'de, const LEN: usize> crate::de::Visitor<'de> for Visitor<LEN> {
+            type Value = [u8; LEN];
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "exactly {LEN} raw bytes")
+            }
+
+            fn visit_byte_buf<E: crate::de::DeserializeError>(
+                self,
+                v: Vec<u8>,
+            ) -> Result<Self::Value, E> {
+                match v.try_into() {
+                    Ok(v) => Ok(v),
+                    Err(_) => todo!("deserialize incorrectly sized byte arrays"),
+                }
+            }
+
+            fn visit_bytes<E: crate::de::DeserializeError>(
+                self,
+                v: &'de [u8],
+            ) -> Result<Self::Value, E> {
+                match v.try_into() {
+                    Ok(v) => Ok(v),
+                    Err(_) => todo!("deserialize incorrectly sized byte arrays"),
+                }
+            }
+        }
+
+        pub fn serialize<S: Serializer, const LEN: usize>(
+            bytes: &[u8; LEN],
+            ser: S,
+        ) -> Result<S::Ok, S::Error> {
+            ser.serialize_bytes(bytes)
+        }
+
+        pub fn deserialize<'de, D: Deserializer<'de>, const LEN: usize>(
+            de: D,
+        ) -> Result<[u8; LEN], D::Error> {
+            de.deserialize_bytes(Visitor(PhantomData))
+        }
     }
 }

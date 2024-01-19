@@ -18,6 +18,9 @@ thiserror = "^1.0"
 tracing = "^0.1"
 
 # captp
+## crypto
+rand = { version = "^0.8", features = [] }
+ed25519-dalek = { version = "^2", features = ["rand_core"] }
 
 # locators
 # url = "^2.4"
@@ -26,7 +29,8 @@ tracing = "^0.1"
 syrup = { path = "lib/syrup" }
 
 # netlayers
-futures = "^0.3"
+futures = { version = "^0.3" }
+smol = "^2"
 ## tor
 arti-client = { version = "^0.12", git = "https://gitlab.torproject.org/tpo/core/arti", features = ["onion-service-client"], optional = true }
 tor-rtcompat = { version = "^0.9", git = "https://gitlab.torproject.org/tpo/core/arti", features = [], optional = true }
@@ -35,8 +39,13 @@ tor-rtcompat = { version = "^0.9", git = "https://gitlab.torproject.org/tpo/core
 proptest = { version = "^1.4" }
 lazy_static = { version = "^1.4" }
 
+easy-parallel = "^3"
+tracing-subscriber = { version = "^0.3", features = [ "time", "env-filter", "parking_lot", "local-time", "json" ] }
+time = { version = "^0.3", features = ["formatting", "local-offset", "macros"] }
+
 [build-dependencies]
 
 [features]
-default = ["netlayer-onion"]
+default = []
 netlayer-onion = ["dep:arti-client", "dep:tor-rtcompat"]
+netlayer-mock = []

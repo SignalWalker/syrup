@@ -130,9 +130,11 @@ impl<'input> Field<'input> {
                                         Some(id) => {
                                             preds.insert(id, clause);
                                         }
-                                        None => todo!(),
+                                        None => {
+                                            todo!("get field generic where predicates for {p:?}")
+                                        }
                                     },
-                                    _ => todo!(),
+                                    _ => todo!("get field generic where predicates for {t:?}"),
                                 },
                                 _ => todo!("get field generic where predicates for {clause:?}"),
                             }
@@ -211,7 +213,13 @@ impl<'input> Field<'input> {
                         },
                         Some(q) => todo!("extract generics from type path qualifier {q:?}"),
                     },
-                    Type::Array(arr) => todo!("extract generics from array type {arr:?}"),
+                    Type::Array(arr) => {
+                        type_stack.push(&*arr.elem);
+                        match &arr.len {
+                            Expr::Lit(_) => {}
+                            _ => todo!("extract generics from nonliteral type array length"),
+                        }
+                    }
                     Type::BareFn(f) => todo!("extract generics from bare fn {f:?}"),
                     Type::Group(_) => todo!("extract generics from type group"),
                     Type::ImplTrait(_) => todo!("extract generics from impl trait"),
@@ -222,7 +230,13 @@ impl<'input> Field<'input> {
                     Type::Never(_) => {}
                     Type::Paren(_) => todo!("extract generics from parenthesized type"),
                     Type::Ptr(_) => todo!("extract generics from type ptr"),
-                    Type::Reference(_) => todo!("extract generics from reference type"),
+                    Type::Reference(r) => {
+                        if let Some(lt) = r.lifetime.as_ref() {
+                            ser_data.insert_lt(lt);
+                            des_data.insert_lt(lt);
+                        }
+                        type_stack.push(&*r.elem);
+                    }
                     Type::Slice(_) => todo!("extract generics from slice type"),
                     Type::TraitObject(_) => todo!("extract generics from trait object"),
                     Type::Tuple(_) => todo!("extract generics from tuple"),
@@ -299,6 +313,7 @@ impl<'input> Field<'input> {
                         #driver::<#wrapper_ty #ty_generics>()?.unwrap().0
                     }})
                 }
+                _ => todo!("verbatim deserialization conversion"),
             },
             None => Ok(parse_quote! {
                 #driver::<#parse_to>()?.unwrap()
@@ -361,6 +376,7 @@ impl<'input> Field<'input> {
                         #driver(&#wrapper_ty(#field_access))?
                     }})
                 }
+                _ => todo!("verbatim serialization conversion"),
             },
             None => Ok(parse_quote! {
                 #driver(#field_access)?

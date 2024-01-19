@@ -23,12 +23,7 @@ impl<'i> ByteDeserializer<'i> {
         &'s mut self,
         mut p: impl nom::Parser<&'i [u8], O, <&'s mut Self as Deserializer<'i>>::Error>,
     ) -> Result<O, <&'s mut Self as Deserializer<'i>>::Error> {
-        let (rem, res) = match p.parse(self.input) {
-            Ok(o) => o,
-            Err(nom::Err::Incomplete(_)) => todo!(),
-            Err(nom::Err::Error(e)) => return Err(e),
-            Err(nom::Err::Failure(e)) => return Err(e),
-        };
+        let (rem, res) = p.parse(self.input)?;
         self.input = rem;
         Ok(res)
     }

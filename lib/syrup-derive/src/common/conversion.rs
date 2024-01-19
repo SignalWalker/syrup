@@ -1,4 +1,4 @@
-use syn::{Path, Type};
+use syn::{Expr, Path, Type};
 
 #[derive(Clone)]
 pub enum Conversion {
@@ -10,6 +10,7 @@ pub enum Conversion {
 pub enum With {
     Conversion(Conversion),
     Custom(Path),
+    Verbatim(Expr),
 }
 
 impl With {

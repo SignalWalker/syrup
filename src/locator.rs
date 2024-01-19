@@ -20,42 +20,36 @@ pub struct NodeLocator<HintKey, HintValue> {
     pub hints: HashMap<HintKey, HintValue>,
 }
 
-impl<HintKey: PartialEq + Eq + std::hash::Hash, HintValue: PartialEq> PartialEq
-    for NodeLocator<HintKey, HintValue>
+impl<HKey: std::fmt::Display, HVal: std::fmt::Display> std::fmt::Display
+    for NodeLocator<HKey, HVal>
 {
-    fn eq(&self, other: &Self) -> bool {
-        self.designator == other.designator
-            && self.transport == other.transport
-            && self.hints == other.hints
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ocapn://{}.{}", self.designator, self.transport)?;
+        if !self.hints.is_empty() {
+            let mut entries = self.hints.iter();
+            let (k, v) = entries.next().unwrap();
+            f.write_str("?{k}={v}")?;
+            for (k, v) in entries {
+                write!(f, "{k}={v}")?;
+            }
+        }
+        Ok(())
     }
 }
 
-impl<HintKey: PartialEq + Eq + std::hash::Hash, HintValue: PartialEq + Eq> Eq
-    for NodeLocator<HintKey, HintValue>
-{
+impl<HintKey, HintValue> PartialEq for NodeLocator<HintKey, HintValue> {
+    fn eq(&self, other: &Self) -> bool {
+        self.designator == other.designator && self.transport == other.transport
+    }
 }
 
-impl<HKey: std::fmt::Display, HVal: std::fmt::Display> NodeLocator<HKey, HVal> {
-    /// Serialize this locator to a URI, as described in the
-    /// [Locator specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Locators.md#uri-serialization).
-    pub fn to_uri(&self) -> String {
-        format!(
-            "ocapn://{}.{}{}",
-            self.designator,
-            self.transport,
-            if self.hints.is_empty() {
-                "".to_owned()
-            } else {
-                // TODO :: switch to Iterator::intersperse once that's stabilized
-                "?".to_owned()
-                    + &self
-                        .hints
-                        .iter()
-                        .map(|(key, val)| format!("{key}={val}"))
-                        .collect::<Vec<_>>()
-                        .join(",")
-            }
-        )
+impl<HKey, HVal> NodeLocator<HKey, HVal> {
+    pub fn new(designator: String, transport: String) -> Self {
+        Self {
+            designator,
+            transport,
+            hints: HashMap::new(),
+        }
     }
 }
 
@@ -69,17 +63,10 @@ pub struct SturdyRefLocator<HintKey, HintValue> {
     pub swiss_num: String,
 }
 
-impl<HKey: PartialEq + Eq + std::hash::Hash, HVal: PartialEq> PartialEq
-    for SturdyRefLocator<HKey, HVal>
-{
+impl<HKey, HVal> PartialEq for SturdyRefLocator<HKey, HVal> {
     fn eq(&self, other: &Self) -> bool {
         self.node_locator == other.node_locator && self.swiss_num == other.swiss_num
     }
-}
-
-impl<HKey: PartialEq + Eq + std::hash::Hash, HVal: PartialEq + Eq> Eq
-    for SturdyRefLocator<HKey, HVal>
-{
 }
 
 #[cfg(test)]

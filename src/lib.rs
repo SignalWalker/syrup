@@ -6,3 +6,5 @@ pub mod locator;
 pub mod netlayer;
 
 pub use syrup;
+
+pub const CAPTP_VERSION: &'static str = "1.0";

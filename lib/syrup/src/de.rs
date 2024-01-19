@@ -1,5 +1,5 @@
 use super::Error;
-use std::marker::PhantomData;
+use std::{marker::PhantomData, num::NonZeroUsize};
 
 mod impl_deserialize;
 
@@ -12,7 +12,11 @@ pub use byte_deserializer::*;
 mod visitor;
 pub use visitor::*;
 
-pub trait DeserializeError {}
+pub use nom::Needed;
+
+pub trait DeserializeError {
+    fn needed(&self) -> Option<Needed>;
+}
 
 pub trait DeserializeSeed<'input> {
     type Value;
@@ -188,6 +192,12 @@ pub fn from_bytes<'i, T: Deserialize<'i>>(input: &'i [u8]) -> Result<T, Error<'i
         todo!()
         // Err(Error::TrailingCharacters)
     }
+}
+
+pub fn nom_bytes<'i, T: Deserialize<'i>>(input: &'i [u8]) -> Result<(&'i [u8], T), Error<'i>> {
+    let mut de = ByteDeserializer::from_bytes(input);
+    let res = T::deserialize(&mut de)?;
+    Ok((de.input, res))
 }
 
 #[cfg(test)]

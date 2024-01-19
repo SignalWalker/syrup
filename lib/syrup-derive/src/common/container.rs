@@ -58,6 +58,11 @@ impl<'input> Container<'input> {
                         from = Some(With::fallible(meta.value()?.parse()?));
                         into = Some(With::fallible(meta.value()?.parse()?));
                     }
+                    "transparent" => {
+                        from = Some(With::Verbatim(parse_quote! { self.0 }));
+                        into = Some(With::Verbatim(parse_quote! { self.0 }))
+                    }
+                    // bounds
                     "deserialize_bound" => {
                         des_bounds =
                             Some(Punctuated::<WherePredicate, Token![;]>::parse_terminated(
@@ -165,7 +170,15 @@ impl<'input> Container<'input> {
         visitor: &Ident,
     ) -> Result<(TokenStream, Expr), syn::Error> {
         match &self.from {
-            Some(_) => errtodo!("deserialize_with"),
+            Some(w) => match w {
+                With::Verbatim(from_expr) => Ok((
+                    quote! {},
+                    parse_quote! {
+                        #from_expr.deserialize(#deserializer).map(Self)
+                    },
+                )),
+                _ => todo!("deserialize_with"),
+            },
             None => match &self.inner {
                 Some(inner) => inner.generate_deserialize_expr(self, deserializer, visitor),
                 None => {

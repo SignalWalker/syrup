@@ -59,7 +59,7 @@ impl<'input> Inner<'input> {
 
                             let (mut #rec, label) = #rec.label::<#syrup::Symbol<&#lifetime str>>()?;
                             if label.0 != #record_label {
-                                todo!()
+                                todo!("handle mismatched record labels in deserialize derive (expected {:?}, got {:?})", #record_label, label.0)
                             }
                             Ok(Self::Value {
                                 #(#field_ids: #field_exprs),*
