@@ -41,3 +41,28 @@ fn op_start() {
         );
     })
 }
+
+// #[test]
+// fn op_abort() {
+//     initialize_tracing(LogFormat::Pretty);
+//
+//     let ex = Executor::new();
+//
+//     smol::block_on(async {
+//         let (node_a, _) = make_node().await.unwrap();
+//         let (node_b, locator_b) = make_node().await.unwrap();
+//
+//         let (mut results, _) = Parallel::new()
+//             .add(|| smol::block_on(ex.run(node_a.connect(locator_b))))
+//             .add(|| smol::block_on(ex.run(node_b.accept())))
+//             .finish(|| tracing::info!("connecting nodes a & b..."));
+//
+//         let session_ba = results.pop().unwrap().unwrap();
+//         let session_ab = results.pop().unwrap().unwrap();
+//
+//         assert_eq!(
+//             session_ab.signing_key().verifying_key(),
+//             *session_ba.remote_vkey()
+//         );
+//     })
+// }
