@@ -12,6 +12,9 @@ pub use byte_deserializer::*;
 mod visitor;
 pub use visitor::*;
 
+mod stream;
+pub use stream::*;
+
 pub use nom::Needed;
 
 pub trait DeserializeError {
@@ -169,6 +172,8 @@ pub trait Deserializer<'input> {
 
     fn deserialize_bytes<V: Visitor<'input>>(self, visitor: V) -> Result<V::Value, Self::Error>;
     fn deserialize_byte_buf<V: Visitor<'input>>(self, visitor: V) -> Result<V::Value, Self::Error>;
+
+    fn deserialize_option<V: Visitor<'input>>(self, visitor: V) -> Result<V::Value, Self::Error>;
 
     fn deserialize_dictionary<V: Visitor<'input>>(
         self,

@@ -69,6 +69,10 @@ impl<'input> Field<'input> {
                     "serialize_with" => {
                         into = Some(With::Custom(meta.value()?.parse()?));
                     }
+                    "optional" => {
+                        into = Some(With::Optional);
+                        from = Some(With::Optional);
+                    }
                     "with" => {
                         let mut module: Path = meta.value()?.parse()?;
                         let from_fn = {
@@ -313,7 +317,57 @@ impl<'input> Field<'input> {
                         #driver::<#wrapper_ty #ty_generics>()?.unwrap().0
                     }})
                 }
-                _ => todo!("verbatim deserialization conversion"),
+                With::Optional => {
+                    errtodo!(self.ty.span(), "optional deserialization")
+                    // let syrup = &container.syrup_crate;
+                    //
+                    // let lifetime = &container.des_lifetime;
+                    // let (_, ty_generics, where_clause) = self.des_generics.split_for_impl();
+                    // let impl_generics = {
+                    //     let mut gen = self.des_generics.clone();
+                    //     gen.params.insert(
+                    //         0,
+                    //         GenericParam::Lifetime(LifetimeParam::new(lifetime.clone())),
+                    //     );
+                    //     let (res, _, _) = gen.split_for_impl();
+                    //     res.to_token_stream()
+                    // };
+                    //
+                    // let turbo = ty_generics.as_turbofish();
+                    //
+                    // let visitor_ty = Ident::new("__Visitor", Span::call_site());
+                    // let wrapper_ty = Ident::new("__Wrapper", Span::call_site());
+                    // let res_ty = self.ty;
+                    // let des_ty = Ident::new("__Des", Span::call_site());
+                    // let des = Ident::new("__des", Span::call_site());
+                    // Ok(parse_quote! {{
+                    //     struct #wrapper_ty #ty_generics(#res_ty);
+                    //     struct #visitor_ty #ty_generics {
+                    //         _p: ::std::marker::PhantomData<#res_ty>
+                    //     }
+                    //     impl #impl_generics #syrup::de::Visitor<#lifetime> for #visitor_ty #ty_generics #where_clause {
+                    //         type Value = #wrapper_ty #ty_generics;
+                    //         fn expecting(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    //             write!(f, ::std::stringify!(#res_ty))
+                    //         }
+                    //         fn visit_bool<E: #syrup::de::DeserializeError>(self, v: bool) -> Result<Self::Value, E> {
+                    //             match v {
+                    //                 true => Err(todo!()),
+                    //                 false => Ok(None)
+                    //             }
+                    //         }
+                    //     }
+                    //     impl #impl_generics #syrup::de::Deserialize<#lifetime> for #wrapper_ty #ty_generics #where_clause {
+                    //         fn deserialize<#des_ty: #syrup::de::Deserializer<#lifetime>>(#des: #des_ty) -> ::std::result::Result<Self, #des_ty::Error> {
+                    //             #des_fn(#des).map(#wrapper_ty #turbo)
+                    //         }
+                    //     }
+                    //     let visitor = #visitor_ty { _p: ::std::marker::PhantomData };
+                    //     #driver::<#res_ty>()
+                    //     #driver::<#wrapper_ty #ty_generics>()?.unwrap().0
+                    // }})
+                }
+                _ => errtodo!(self.ty.span(), "verbatim deserialization conversion"),
             },
             None => Ok(parse_quote! {
                 #driver::<#parse_to>()?.unwrap()
@@ -368,7 +422,6 @@ impl<'input> Field<'input> {
                     Ok(parse_quote! {{
                         struct #wrapper_ty #ty_generics (&#wrapper_lt #res_ty);
                         impl #impl_generics #syrup::ser::Serialize for #wrapper_ty #ty_generics #where_clause {
-                            #[inline]
                             fn serialize<#ser_ty: #syrup::ser::Serializer>(&self, #ser: #ser_ty) -> ::std::result::Result<#ser_ty::Ok, #ser_ty::Error> {
                                 #into_fn(self.0, #ser)
                             }
@@ -376,7 +429,10 @@ impl<'input> Field<'input> {
                         #driver(&#wrapper_ty(#field_access))?
                     }})
                 }
-                _ => todo!("verbatim serialization conversion"),
+                With::Optional => {
+                    errtodo!(self.ty.span(), "optional serialization")
+                }
+                _ => errtodo!(self.ty.span(), "verbatim serialization conversion"),
             },
             None => Ok(parse_quote! {
                 #driver(#field_access)?

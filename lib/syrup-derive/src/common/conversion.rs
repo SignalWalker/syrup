@@ -11,6 +11,7 @@ pub enum With {
     Conversion(Conversion),
     Custom(Path),
     Verbatim(Expr),
+    Optional,
 }
 
 impl With {

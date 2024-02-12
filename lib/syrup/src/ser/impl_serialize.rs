@@ -24,6 +24,12 @@ macro_rules! impl_serialize_simple {
     };
 }
 
+impl<S: Serialize> Serialize for Box<S> {
+    fn serialize<Ser: Serializer>(&self, s: Ser) -> Result<Ser::Ok, Ser::Error> {
+        (**self).serialize(s)
+    }
+}
+
 impl_serialize_simple!(bool, serialize_bool);
 impl_serialize_simple!(self, self, str, serialize_str);
 impl_serialize_simple!(self, self.as_str(), String, serialize_str);
@@ -44,8 +50,29 @@ impl_serialize_simple!(u64, serialize_u64);
 impl_serialize_simple!(u128, serialize_u128);
 impl_serialize_simple!(usize, serialize_usize);
 
+impl Serialize for ibig::IBig {
+    fn serialize<Ser: Serializer>(&self, s: Ser) -> Result<Ser::Ok, Ser::Error> {
+        i128::try_from(self).unwrap().serialize(s)
+    }
+}
+
+impl Serialize for ibig::UBig {
+    fn serialize<Ser: Serializer>(&self, s: Ser) -> Result<Ser::Ok, Ser::Error> {
+        u128::try_from(self).unwrap().serialize(s)
+    }
+}
+
 impl_serialize_simple!(f32, serialize_f32);
 impl_serialize_simple!(f64, serialize_f64);
+
+impl<T: Serialize> Serialize for Option<T> {
+    fn serialize<Ser: Serializer>(&self, s: Ser) -> Result<Ser::Ok, Ser::Error> {
+        match self {
+            None => false.serialize(s),
+            Some(v) => v.serialize(s),
+        }
+    }
+}
 
 impl<T: Serialize> Serialize for Vec<T> {
     fn serialize<Ser: Serializer>(&self, s: Ser) -> Result<Ser::Ok, Ser::Error> {

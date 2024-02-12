@@ -274,6 +274,33 @@ impl<'input, T: Deserialize<'input>, const LEN: usize> Deserialize<'input> for [
     }
 }
 
+impl<'input, T: Deserialize<'input>> Deserialize<'input> for Option<T> {
+    fn deserialize<D: Deserializer<'input>>(de: D) -> Result<Self, D::Error> {
+        struct OptionVisitor<T> {
+            _t: PhantomData<T>,
+        }
+        impl<'input, T: Deserialize<'input>> Visitor<'input> for OptionVisitor<T> {
+            type Value = Option<T>;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "either false or an object of type T")
+            }
+
+            fn visit_none<E: DeserializeError>(self) -> Result<Self::Value, E> {
+                Ok(None)
+            }
+
+            fn visit_some<D: Deserializer<'input>>(
+                self,
+                deserializer: D,
+            ) -> Result<Self::Value, D::Error> {
+                T::deserialize(deserializer).map(Some)
+            }
+        }
+        de.deserialize_option(OptionVisitor { _t: PhantomData })
+    }
+}
+
 macro_rules! deserialize_int {
     ($Int:ty, $de_fn:ident => $($visit_fn:ident, $From:ty, $v:ident, $from:expr);+$(;)?) => {
         impl<'input> Deserialize<'input> for $Int {

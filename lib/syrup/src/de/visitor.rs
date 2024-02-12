@@ -1,4 +1,4 @@
-use super::{DeserializeError, DictAccess, RecordAccess, SeqAccess, SetAccess};
+use super::{DeserializeError, Deserializer, DictAccess, RecordAccess, SeqAccess, SetAccess};
 
 pub trait Visitor<'input>: Sized {
     type Value;
@@ -72,6 +72,14 @@ pub trait Visitor<'input>: Sized {
         todo!()
     }
     fn visit_byte_buf<E: DeserializeError>(self, v: Vec<u8>) -> Result<Self::Value, E> {
+        todo!()
+    }
+
+    fn visit_none<E: DeserializeError>(self) -> Result<Self::Value, E> {
+        todo!()
+    }
+
+    fn visit_some<D: Deserializer<'input>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
         todo!()
     }
 

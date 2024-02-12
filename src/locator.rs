@@ -1,12 +1,11 @@
 //! - [Draft Specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Locators.md)
 
+use std::collections::HashMap;
 use syrup::{Deserialize, Serialize};
 
 /// Onion-specific extensions to the locator module.
 #[cfg(feature = "netlayer-onion")]
 mod onion;
-
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[syrup(name = "ocapn-node",
@@ -28,7 +27,7 @@ impl<HKey: std::fmt::Display, HVal: std::fmt::Display> std::fmt::Display
         if !self.hints.is_empty() {
             let mut entries = self.hints.iter();
             let (k, v) = entries.next().unwrap();
-            f.write_str("?{k}={v}")?;
+            write!(f, "?{k}={v}")?;
             for (k, v) in entries {
                 write!(f, "{k}={v}")?;
             }
@@ -60,7 +59,8 @@ impl<HKey, HVal> NodeLocator<HKey, HVal> {
 )]
 pub struct SturdyRefLocator<HintKey, HintValue> {
     pub node_locator: NodeLocator<HintKey, HintValue>,
-    pub swiss_num: String,
+    #[syrup(with = syrup::bytes::vec)]
+    pub swiss_num: Vec<u8>,
 }
 
 impl<HKey, HVal> PartialEq for SturdyRefLocator<HKey, HVal> {
@@ -71,10 +71,9 @@ impl<HKey, HVal> PartialEq for SturdyRefLocator<HKey, HVal> {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-
     use super::NodeLocator;
     use crate::locator::SturdyRefLocator;
+    use std::collections::HashMap;
     use syrup::Error;
 
     macro_rules! assert_eq_bstr {
@@ -123,7 +122,7 @@ mod test {
     fn deserialize_sturdyref_locator() -> Result<(), Error<'static>> {
         assert_eq!(
             syrup::de::from_bytes::<SturdyRefLocator<String, String>>(
-                br#"<15'ocapn-sturdyref<10'ocapn-node15"testlocator.com5'onionf>3"bef>"#
+                br#"<15'ocapn-sturdyref<10'ocapn-node15"testlocator.com5'onionf>3:bef>"#
             )?,
             SturdyRefLocator {
                 node_locator: NodeLocator {
@@ -131,7 +130,7 @@ mod test {
                     transport: "onion".to_owned(),
                     hints: HashMap::default()
                 },
-                swiss_num: "bef".to_owned()
+                swiss_num: b"bef".to_vec()
             }
         );
         Ok(())

@@ -1,10 +1,18 @@
 use super::Netlayer;
-use crate::{captp::CapTpSession, locator::NodeLocator};
-use smol::net::{AsyncToSocketAddrs, SocketAddr, TcpListener, TcpStream};
+use crate::{
+    captp::{CapTpSession, CapTpSessionManager},
+    locator::NodeLocator,
+};
+use smol::{
+    lock::RwLock,
+    net::{AsyncToSocketAddrs, SocketAddr, TcpListener, TcpStream},
+};
 use syrup::Serialize;
 
+#[derive(Debug)]
 pub struct TcpIpNetlayer {
     listener: TcpListener,
+    manager: RwLock<CapTpSessionManager<TcpStream>>,
 }
 
 impl Netlayer<TcpStream> for TcpIpNetlayer {
@@ -14,6 +22,10 @@ impl Netlayer<TcpStream> for TcpIpNetlayer {
         &self,
         locator: NodeLocator<HintKey, HintValue>,
     ) -> Result<CapTpSession<TcpStream>, Self::Error> {
+        if let Some(session) = self.manager.read().await.get(&locator.designator) {
+            return Ok(session);
+        }
+
         let addr = locator.designator.parse::<SocketAddr>();
         tracing::debug!(
             local = ?self.local_addr()?,
@@ -21,7 +33,10 @@ impl Netlayer<TcpStream> for TcpIpNetlayer {
             remote_addr = ?addr,
             "starting connection"
         );
-        CapTpSession::init(TcpStream::connect(addr.unwrap()).await?)
+        self.manager
+            .write()
+            .await
+            .init_session(TcpStream::connect(addr.unwrap()).await?)
             .and_connect(self.locator::<String, String>()?)
             .await
     }
@@ -31,7 +46,11 @@ impl Netlayer<TcpStream> for TcpIpNetlayer {
             local = ?self.local_addr()?,
             "accepting connection"
         );
-        CapTpSession::init(self.listener.accept().await?.0)
+
+        self.manager
+            .write()
+            .await
+            .init_session(self.listener.accept().await?.0)
             .and_accept(self.locator::<String, String>()?)
             .await
     }
@@ -40,7 +59,10 @@ impl Netlayer<TcpStream> for TcpIpNetlayer {
 impl TcpIpNetlayer {
     pub async fn bind(addr: impl AsyncToSocketAddrs) -> Result<Self, futures::io::Error> {
         let listener = TcpListener::bind(addr).await?;
-        Ok(Self { listener })
+        Ok(Self {
+            listener,
+            manager: RwLock::new(CapTpSessionManager::new()),
+        })
     }
 
     #[inline]

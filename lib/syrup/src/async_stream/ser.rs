@@ -235,7 +235,7 @@ impl<'w, 'ser: 'w, Writer: AsyncWrite + Unpin> Serializer
 
     fn serialize_record(
         self,
-        name: &'static str,
+        name: &str,
         len: Option<usize>,
     ) -> Result<Self::SerializeRecord, Self::Error> {
         todo!()
@@ -243,5 +243,9 @@ impl<'w, 'ser: 'w, Writer: AsyncWrite + Unpin> Serializer
 
     fn serialize_set(self, len: Option<usize>) -> Result<Self::SerializeSet, Self::Error> {
         todo!()
+    }
+
+    unsafe fn serialize_raw(self, data: &[u8]) -> Result<Self::Ok, Self::Error> {
+        write_all(self.writer, data.to_vec())
     }
 }

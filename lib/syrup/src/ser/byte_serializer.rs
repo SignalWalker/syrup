@@ -222,7 +222,7 @@ impl<'ser> Serializer for &'ser mut ByteSerializer {
 
     fn serialize_record(
         self,
-        name: &'static str,
+        name: &str,
         _len: Option<usize>,
     ) -> Result<Self::SerializeRecord, Self::Error> {
         self.bytes.push(b'<');
@@ -233,5 +233,10 @@ impl<'ser> Serializer for &'ser mut ByteSerializer {
     fn serialize_set(self, len: Option<usize>) -> Result<Self::SerializeSet, Self::Error> {
         self.bytes.push(b'#');
         Ok(ByteSetSerializer::new(self, len))
+    }
+
+    unsafe fn serialize_raw(self, data: &[u8]) -> Result<Self::Ok, Self::Error> {
+        self.bytes.extend_from_slice(data);
+        Ok(())
     }
 }

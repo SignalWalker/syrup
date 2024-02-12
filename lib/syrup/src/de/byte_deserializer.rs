@@ -144,6 +144,18 @@ impl<'input> Deserializer<'input> for &mut ByteDeserializer<'input> {
         parse_byte_obj.map(ToOwned::to_owned)
     );
 
+    fn deserialize_option<V: Visitor<'input>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        match self.nom(nchar::char('f')) {
+            Ok(_) => visitor.visit_none(),
+            Err(e) => match e.kind {
+                crate::ErrorKind::Parse(crate::ParseErrorKind::Nom(
+                    nom::error::ErrorKind::Char,
+                )) => visitor.visit_some(self),
+                _ => Err(e),
+            },
+        }
+    }
+
     fn deserialize_dictionary<V: Visitor<'input>>(
         self,
         visitor: V,

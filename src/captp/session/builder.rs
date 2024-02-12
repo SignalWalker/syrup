@@ -1,6 +1,6 @@
 use super::CapTpSession;
 use crate::{
-    captp::{msg::OpStartSession, CapTpSessionCore},
+    captp::{msg::OpStartSession, session::CapTpSessionManager, CapTpSessionCore},
     locator::NodeLocator,
     CAPTP_VERSION,
 };
@@ -9,14 +9,16 @@ use futures::{AsyncRead, AsyncWrite};
 use rand::rngs::OsRng;
 use syrup::{Deserialize, Serialize};
 
-pub struct CapTpSessionBuilder<Socket> {
+pub struct CapTpSessionBuilder<'manager, Socket> {
+    manager: &'manager mut CapTpSessionManager<Socket>,
     socket: Socket,
     signing_key: SigningKey,
 }
 
-impl<Socket: AsyncRead + AsyncWrite + Unpin> CapTpSessionBuilder<Socket> {
-    pub fn new(socket: Socket) -> Self {
+impl<'m, Socket> CapTpSessionBuilder<'m, Socket> {
+    pub fn new(manager: &'m mut CapTpSessionManager<Socket>, socket: Socket) -> Self {
         Self {
+            manager,
             socket,
             signing_key: SigningKey::generate(&mut OsRng),
         }
@@ -27,6 +29,7 @@ impl<Socket: AsyncRead + AsyncWrite + Unpin> CapTpSessionBuilder<Socket> {
         local_locator: NodeLocator<HKey, HVal>,
     ) -> Result<CapTpSession<Socket>, futures::io::Error>
     where
+        Socket: AsyncRead + AsyncWrite + Unpin,
         NodeLocator<HKey, HVal>: Serialize,
         OpStartSession<HKey, HVal>: Serialize,
     {
@@ -37,16 +40,15 @@ impl<Socket: AsyncRead + AsyncWrite + Unpin> CapTpSessionBuilder<Socket> {
             socket: self.socket,
         };
 
-        let remote_vkey = Self::recv_start_session::<String, String>(&mut core).await?;
+        let (remote_vkey, remote_loc) =
+            Self::recv_start_session::<String, String>(&mut core).await?;
 
         core.send_msg(&start_msg).await?;
         core.flush().await?;
 
-        Ok(CapTpSession::<Socket> {
-            core,
-            signing_key: self.signing_key,
-            remote_vkey,
-        })
+        Ok(self
+            .manager
+            .finalize_session(core, self.signing_key, remote_vkey, remote_loc))
     }
 
     pub async fn and_connect<HKey, HVal>(
@@ -54,6 +56,7 @@ impl<Socket: AsyncRead + AsyncWrite + Unpin> CapTpSessionBuilder<Socket> {
         local_locator: NodeLocator<HKey, HVal>,
     ) -> Result<CapTpSession<Socket>, futures::io::Error>
     where
+        Socket: AsyncRead + AsyncWrite + Unpin,
         NodeLocator<HKey, HVal>: Serialize,
         OpStartSession<HKey, HVal>: Serialize,
     {
@@ -70,13 +73,12 @@ impl<Socket: AsyncRead + AsyncWrite + Unpin> CapTpSessionBuilder<Socket> {
 
         tracing::debug!(local = %local_designator, "sent OpStartSession, receiving response");
 
-        let remote_vkey = Self::recv_start_session::<String, String>(&mut core).await?;
+        let (remote_vkey, remote_loc) =
+            Self::recv_start_session::<String, String>(&mut core).await?;
 
-        Ok(CapTpSession::<Socket> {
-            core,
-            signing_key: self.signing_key,
-            remote_vkey,
-        })
+        Ok(self
+            .manager
+            .finalize_session(core, self.signing_key, remote_vkey, remote_loc))
     }
 
     fn generate_start_msg<HKey, HVal>(
@@ -98,8 +100,9 @@ impl<Socket: AsyncRead + AsyncWrite + Unpin> CapTpSessionBuilder<Socket> {
 
     pub(crate) async fn recv_start_session<HKey, HVal>(
         core: &mut CapTpSessionCore<Socket>,
-    ) -> Result<VerifyingKey, futures::io::Error>
+    ) -> Result<(VerifyingKey, NodeLocator<HKey, HVal>), futures::io::Error>
     where
+        Socket: AsyncRead + Unpin,
         HKey: Serialize,
         HVal: Serialize,
         for<'de> OpStartSession<HKey, HVal>: Deserialize<'de>,
@@ -117,6 +120,6 @@ impl<Socket: AsyncRead + AsyncWrite + Unpin> CapTpSessionBuilder<Socket> {
             todo!()
         }
 
-        Ok(response.session_pubkey.ecc)
+        Ok((response.session_pubkey.ecc, response.acceptable_location))
     }
 }

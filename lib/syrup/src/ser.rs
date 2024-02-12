@@ -83,10 +83,15 @@ pub trait Serializer {
     fn serialize_sequence(self, len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error>;
     fn serialize_record(
         self,
-        name: &'static str,
+        name: &str,
         len: Option<usize>,
     ) -> Result<Self::SerializeRecord, Self::Error>;
     fn serialize_set(self, len: Option<usize>) -> Result<Self::SerializeSet, Self::Error>;
+
+    /// # Safety
+    ///
+    /// Input must be valid Syrup data.
+    unsafe fn serialize_raw(self, data: &[u8]) -> Result<Self::Ok, Self::Error>;
 }
 
 pub trait Serialize {
