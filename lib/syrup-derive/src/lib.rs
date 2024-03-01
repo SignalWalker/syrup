@@ -13,7 +13,7 @@ pub fn derive_deserialize(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 
     match generate_deserialize(&input) {
         Ok(res) => res.into(),
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => e.to_compile_error().into(),
     }
 }
 
@@ -23,6 +23,6 @@ pub fn derive_serialize(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 
     match generate_serialize(&input) {
         Ok(res) => res.into(),
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => e.to_compile_error().into(),
     }
 }

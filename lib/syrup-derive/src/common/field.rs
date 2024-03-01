@@ -1,12 +1,10 @@
-use std::collections::{HashMap, HashSet};
-
 use super::{Container, Conversion, With};
 use proc_macro2::Span;
 use quote::{quote, ToTokens};
+use std::collections::HashMap;
 use syn::{
-    parse_quote, punctuated::Punctuated, spanned::Spanned, ConstParam, Expr, GenericParam,
-    Generics, Ident, Lifetime, LifetimeParam, Path, PathArguments, Token, Type, TypeParam,
-    WherePredicate,
+    parse_quote, punctuated::Punctuated, spanned::Spanned, Expr, GenericParam, Generics, Ident,
+    Lifetime, LifetimeParam, Path, PathArguments, Token, Type, WherePredicate,
 };
 
 pub struct Field<'input> {

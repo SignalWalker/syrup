@@ -3,7 +3,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{
     parse_quote, parse_quote_spanned, punctuated::Punctuated, spanned::Spanned, DeriveInput, Expr,
-    GenericParam, Generics, Ident, Lifetime, LifetimeParam, LitStr, Path, Token, WherePredicate,
+    Generics, Ident, Lifetime, LitStr, Path, Token, WherePredicate,
 };
 
 pub struct Container<'input> {

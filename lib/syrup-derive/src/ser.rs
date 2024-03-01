@@ -1,6 +1,6 @@
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
-use syn::{parse_quote, DeriveInput, TypeTuple};
+use syn::DeriveInput;
 
 use crate::common::Container;
 
