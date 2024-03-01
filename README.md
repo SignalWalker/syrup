@@ -13,7 +13,7 @@ A library implementing [OCapN](https://github.com/ocapn/ocapn).
 
 - [ ] Async runtime agnostic
 - Syrup:
-  - [ ] `#[derive(Serialize, Deserialize)]` (partial, missing enums, some other features)
+  - [ ] `#[derive(Serialize, Deserialize)]` (partial; missing enums, some other features)
   - [ ] Design better way of handling enums
 - CapTP:
   - [ ] Crossed Hellos mitigation
