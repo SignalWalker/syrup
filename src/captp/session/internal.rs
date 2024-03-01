@@ -69,7 +69,7 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
         }
     }
 
-    #[tracing::instrument(fields(msg = %syrup::ser::to_pretty(msg).unwrap()))]
+    #[tracing::instrument(skip(msg))]
     pub(super) async fn send_msg<Msg: Serialize>(&self, msg: &Msg) -> Result<(), SendError>
     where
         Writer: AsyncWrite + Unpin,
@@ -83,7 +83,7 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
         if let Some(reason) = self.aborted_by_remote.read().unwrap().as_ref() {
             return Err(SendError::SessionAborted(reason.clone()));
         }
-        tracing::trace!("sending message");
+        tracing::trace!(msg = %syrup::ser::to_pretty(msg).unwrap(), "sending message");
         self.core.send_msg(msg).await.map_err(SendError::from)
     }
 
