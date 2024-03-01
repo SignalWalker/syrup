@@ -9,6 +9,45 @@
 
 A library implementing [OCapN](https://github.com/ocapn/ocapn).
 
+## Progress
+
+- [ ] Async runtime agnostic
+- Syrup:
+  - [ ] `#[derive(Serialize, Deserialize)]` (partial, missing enums, some other features)
+  - [ ] Design better way of handling enums
+- CapTP:
+  - [ ] Crossed Hellos mitigation
+  - [ ] Figure out ideal way to prevent reader/writer generics from infecting everything else
+    - Right now, it's difficult to write code that can use multiple netlayers at once
+  - [ ] Should we store locally exported objects as `Arc<dyn Object>`, or should we use a message channel?
+  - [ ] Figure out how to deal with promise pipelining
+  - [ ] Third-party handoffs
+  - Operations:
+    - [x] `op:start-session`
+    - [x] `op:deliver-only`
+    - [x] `op:deliver`
+    - [ ] `op:pick`
+    - [x] `op:abort`
+    - [ ] `op:listen`
+    - [ ] `op:gc-export`
+    - [ ] `op:gc-answer`
+  - Bootstrap:
+    - [x] `fetch`
+    - [ ] `deposit-gift`
+    - [ ] `withdraw-gift`
+  - Promises:
+    - [x] `fulfill`
+    - [x] `break`
+- Netlayers:
+  - [ ] Tor Netlayer (was waiting on [arti](https://gitlab.torproject.org/tpo/core/arti) to implement onion services)
+  - [ ] Manage multiple transport types using some sort of netlayer manager struct?
+- Locators:
+  - [ ] Deserialize from URI
+
+## Examples
+
+- [Sneedchat](https://github.com/signalwalker/sneedchat)
+
 ## Etymology
 
 - "R" as in "Rust"
