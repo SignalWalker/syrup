@@ -7,7 +7,7 @@ use syrup::{Deserialize, Serialize};
 #[cfg(feature = "netlayer-onion")]
 mod onion;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[syrup(name = "ocapn-node",
         deserialize_bound = HintKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; HintValue: Deserialize<'__de>
         )]
@@ -17,6 +17,16 @@ pub struct NodeLocator<HintKey, HintValue> {
     pub transport: String,
     #[syrup(with = syrup::optional_map)]
     pub hints: HashMap<HintKey, HintValue>,
+}
+
+impl<HKey: std::fmt::Debug, HVal: std::fmt::Debug> std::fmt::Debug for NodeLocator<HKey, HVal> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "<ocapn-node {} {} {:?}>",
+            self.designator, self.transport, self.hints
+        )
+    }
 }
 
 impl<HKey: std::fmt::Display, HVal: std::fmt::Display> std::fmt::Display

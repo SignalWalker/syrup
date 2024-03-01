@@ -1,44 +1,57 @@
 use super::CapTpSession;
 use crate::{
+    async_compat::{AsyncIoError, AsyncRead, AsyncWrite},
     captp::{msg::OpStartSession, session::CapTpSessionManager, CapTpSessionCore},
     locator::NodeLocator,
     CAPTP_VERSION,
 };
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
-use futures::{AsyncRead, AsyncWrite};
 use rand::rngs::OsRng;
+use std::sync::Arc;
 use syrup::{Deserialize, Serialize};
 
-pub struct CapTpSessionBuilder<'manager, Socket> {
-    manager: &'manager mut CapTpSessionManager<Socket>,
-    socket: Socket,
+pub struct CapTpSessionBuilder<'manager, Reader, Writer> {
+    manager: &'manager mut CapTpSessionManager<Reader, Writer>,
+    reader: Reader,
+    writer: Writer,
     signing_key: SigningKey,
+    // registry: Option<Arc<super::SwissRegistry<Socket>>>,
 }
 
-impl<'m, Socket> CapTpSessionBuilder<'m, Socket> {
-    pub fn new(manager: &'m mut CapTpSessionManager<Socket>, socket: Socket) -> Self {
+impl<'m, Reader, Writer> CapTpSessionBuilder<'m, Reader, Writer> {
+    pub fn new(
+        manager: &'m mut CapTpSessionManager<Reader, Writer>,
+        reader: Reader,
+        writer: Writer,
+    ) -> Self {
         Self {
             manager,
-            socket,
+            reader,
+            writer,
             signing_key: SigningKey::generate(&mut OsRng),
+            // registry: None,
         }
     }
+
+    // pub fn with_registry(mut self, registry: Option<Arc<super::SwissRegistry<Socket>>>) -> Self {
+    //     self.registry = registry;
+    //     self
+    // }
 
     pub async fn and_accept<HKey, HVal>(
         self,
         local_locator: NodeLocator<HKey, HVal>,
-    ) -> Result<CapTpSession<Socket>, futures::io::Error>
+    ) -> Result<CapTpSession<Reader, Writer>, AsyncIoError>
     where
-        Socket: AsyncRead + AsyncWrite + Unpin,
+        Reader: AsyncRead + Unpin,
+        Writer: AsyncWrite + Unpin,
         NodeLocator<HKey, HVal>: Serialize,
         OpStartSession<HKey, HVal>: Serialize,
     {
         tracing::debug!(local = %local_locator.designator, "accepting OpStartSession");
 
         let start_msg = self.generate_start_msg(local_locator);
-        let mut core = CapTpSessionCore {
-            socket: self.socket,
-        };
+        let mut core = CapTpSessionCore::new(self.reader, self.writer);
 
         let (remote_vkey, remote_loc) =
             Self::recv_start_session::<String, String>(&mut core).await?;
@@ -46,17 +59,22 @@ impl<'m, Socket> CapTpSessionBuilder<'m, Socket> {
         core.send_msg(&start_msg).await?;
         core.flush().await?;
 
-        Ok(self
-            .manager
-            .finalize_session(core, self.signing_key, remote_vkey, remote_loc))
+        Ok(self.manager.finalize_session(
+            core,
+            self.signing_key,
+            remote_vkey,
+            remote_loc,
+            // self.registry.unwrap_or_default(),
+        ))
     }
 
     pub async fn and_connect<HKey, HVal>(
         self,
         local_locator: NodeLocator<HKey, HVal>,
-    ) -> Result<CapTpSession<Socket>, futures::io::Error>
+    ) -> Result<CapTpSession<Reader, Writer>, AsyncIoError>
     where
-        Socket: AsyncRead + AsyncWrite + Unpin,
+        Reader: AsyncRead + Unpin,
+        Writer: AsyncWrite + Unpin,
         NodeLocator<HKey, HVal>: Serialize,
         OpStartSession<HKey, HVal>: Serialize,
     {
@@ -64,9 +82,7 @@ impl<'m, Socket> CapTpSessionBuilder<'m, Socket> {
         tracing::debug!(local = %local_designator, "connecting with OpStartSession");
 
         let start_msg = self.generate_start_msg(local_locator);
-        let mut core = CapTpSessionCore {
-            socket: self.socket,
-        };
+        let mut core = CapTpSessionCore::new(self.reader, self.writer);
 
         core.send_msg(&start_msg).await?;
         core.flush().await?;
@@ -76,9 +92,13 @@ impl<'m, Socket> CapTpSessionBuilder<'m, Socket> {
         let (remote_vkey, remote_loc) =
             Self::recv_start_session::<String, String>(&mut core).await?;
 
-        Ok(self
-            .manager
-            .finalize_session(core, self.signing_key, remote_vkey, remote_loc))
+        Ok(self.manager.finalize_session(
+            core,
+            self.signing_key,
+            remote_vkey,
+            remote_loc,
+            // self.registry.unwrap_or_default(),
+        ))
     }
 
     fn generate_start_msg<HKey, HVal>(
@@ -99,10 +119,10 @@ impl<'m, Socket> CapTpSessionBuilder<'m, Socket> {
     }
 
     pub(crate) async fn recv_start_session<HKey, HVal>(
-        core: &mut CapTpSessionCore<Socket>,
-    ) -> Result<(VerifyingKey, NodeLocator<HKey, HVal>), futures::io::Error>
+        core: &CapTpSessionCore<Reader, Writer>,
+    ) -> Result<(VerifyingKey, NodeLocator<HKey, HVal>), AsyncIoError>
     where
-        Socket: AsyncRead + Unpin,
+        Reader: AsyncRead + Unpin,
         HKey: Serialize,
         HVal: Serialize,
         for<'de> OpStartSession<HKey, HVal>: Deserialize<'de>,
@@ -113,7 +133,7 @@ impl<'m, Socket> CapTpSessionBuilder<'m, Socket> {
             .await?;
 
         if response.captp_version != CAPTP_VERSION {
-            todo!()
+            todo!("handle mismatched captp versions")
         }
 
         if let Err(_) = response.verify_location() {

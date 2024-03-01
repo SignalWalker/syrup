@@ -1,10 +1,23 @@
-use super::{msg::DescImport, CapTpSession};
-use futures::{
-    channel::oneshot::{Receiver, Sender},
-    AsyncWrite, Future,
-};
+use super::{msg::DescImport, CapTpSession, Delivery, GenericResolver, SendError};
 use std::{any::Any, sync::Arc};
 use syrup::{raw_syrup, Serialize, Symbol};
+
+#[cfg(all(feature = "futures", not(feature = "tokio")))]
+use futures::{
+    channel::{
+        mpsc::{self, TryRecvError},
+        oneshot,
+    },
+    AsyncWrite, Future,
+};
+#[cfg(all(feature = "tokio", not(feature = "futures")))]
+use tokio::{
+    io::AsyncWrite,
+    sync::{
+        mpsc::{self, error::TryRecvError},
+        oneshot,
+    },
+};
 
 mod promise;
 pub use promise::*;
@@ -12,20 +25,19 @@ pub use promise::*;
 mod bootstrap;
 pub use bootstrap::*;
 
-/// Data received in an op:deliver or op:deliver-only
-pub type Delivery = (Vec<syrup::Item>, Option<DescImport>);
 /// Sending half of an object pipe.
 pub type DeliverySender = futures::channel::mpsc::UnboundedSender<Delivery>;
 /// Receiving half of an object pipe.
 pub type DeliveryReceiver = futures::channel::mpsc::UnboundedReceiver<Delivery>;
 
-// pub trait Object {
-//     fn deliver(&self, args: Vec<syrup::Item>);
-// }
+pub trait Object {
+    fn deliver_only(&self, args: Vec<syrup::Item>);
+    fn deliver(&self, args: Vec<syrup::Item>, resolver: GenericResolver);
+}
 
 // pub trait Object {
 //     fn deliver_only(&self, args: Vec<syrup::Item>);
-//     fn deliver(&self, args: Vec<syrup::Item>);
+//     // fn deliver(&self, args: Vec<syrup::Item>);
 // }
 
 // pub trait RemoteObject {
@@ -34,39 +46,76 @@ pub type DeliveryReceiver = futures::channel::mpsc::UnboundedReceiver<Delivery>;
 // }
 
 /// An object to which the answer to a Promise may be sent.
-pub struct RemoteResolver<Socket> {
-    base: RemoteObject<Socket>,
+pub struct RemoteResolver<Reader, Writer> {
+    base: RemoteObject<Reader, Writer>,
 }
 
-impl<Socket> RemoteResolver<Socket> {
+impl<Reader, Writer> RemoteResolver<Reader, Writer> {
     pub async fn fulfill<'arg, Arg: Serialize + 'arg>(
         &self,
         args: impl IntoIterator<Item = &'arg Arg>,
         answer_pos: Option<u64>,
         resolve_me_desc: DescImport,
-    ) -> Result<(), futures::io::Error>
+    ) -> Result<(), SendError>
     where
-        Socket: AsyncWrite + Unpin,
+        Writer: AsyncWrite + Unpin,
     {
         self.base
             .call("fulfill", args, answer_pos, resolve_me_desc)
             .await
     }
 
-    pub async fn break_promise(&self, error: impl Serialize) -> Result<(), futures::io::Error>
+    pub async fn break_promise(&self, error: impl Serialize) -> Result<(), SendError>
     where
-        Socket: AsyncWrite + Unpin,
+        Writer: AsyncWrite + Unpin,
     {
         self.base.call_only("break", &[error]).await
     }
 }
 
 pub type PromiseResult = Result<Vec<syrup::Item>, syrup::Item>;
-pub type PromiseSender = futures::channel::oneshot::Sender<PromiseResult>;
-pub type PromiseReceiver = futures::channel::oneshot::Receiver<PromiseResult>;
+pub type PromiseSender = oneshot::Sender<PromiseResult>;
+pub type PromiseReceiver = oneshot::Receiver<PromiseResult>;
 
 pub struct Resolver {
-    sender: PromiseSender,
+    sender: std::sync::Mutex<Option<PromiseSender>>,
+}
+
+impl Object for Resolver {
+    fn deliver_only(&self, args: Vec<syrup::Item>) {
+        todo!()
+    }
+
+    fn deliver(&self, args: Vec<syrup::Item>, resolver: GenericResolver) {
+        let sender = match self.sender.lock().unwrap().take() {
+            Some(s) => s,
+            None => todo!("broken promise pipe"),
+        };
+        let mut args = args.into_iter();
+        match args.next() {
+            Some(syrup::Item::Symbol(id)) => match id.as_str() {
+                "fulfill" => sender.send(Ok(args.collect())).unwrap(),
+                "break" => match args.next() {
+                    Some(reason) => sender.send(Err(reason)).unwrap(),
+                    _ => todo!(),
+                },
+                _ => todo!(),
+            },
+            _ => todo!(),
+        }
+    }
+}
+
+impl Resolver {
+    pub(crate) fn new() -> (Arc<Self>, Answer) {
+        let (sender, receiver) = oneshot::channel();
+        (
+            Arc::new(Self {
+                sender: Some(sender).into(),
+            }),
+            Answer { receiver },
+        )
+    }
 }
 
 /// An object representing the response to an [OpDeliver].
@@ -74,35 +123,38 @@ pub struct Answer {
     receiver: PromiseReceiver,
 }
 
-impl From<PromiseReceiver> for Answer {
-    fn from(receiver: PromiseReceiver) -> Self {
-        Answer { receiver }
-    }
-}
+impl std::future::Future for Answer {
+    type Output = <PromiseReceiver as futures::Future>::Output;
 
-impl Answer {
-    pub async fn resolve(self) -> Result<PromiseResult, futures::channel::oneshot::Canceled> {
-        self.receiver.await
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        #[cfg(all(feature = "futures", not(feature = "tokio")))]
+        {
+            futures::Future::poll(std::pin::pin!(&mut self.receiver), cx)
+        }
+        #[cfg(all(feature = "tokio", not(feature = "futures")))]
+        {
+            std::future::Future::poll(std::pin::pin!(&mut self.receiver), cx)
+        }
     }
 }
 
 #[derive(Clone)]
-pub struct RemoteObject<Socket> {
-    session: CapTpSession<Socket>,
+pub struct RemoteObject<Reader, Writer> {
+    session: CapTpSession<Reader, Writer>,
     position: u64,
 }
 
-impl<Socket> RemoteObject<Socket> {
-    pub(crate) fn new(session: CapTpSession<Socket>, position: u64) -> Self {
+impl<Reader, Writer> RemoteObject<Reader, Writer> {
+    pub(crate) fn new(session: CapTpSession<Reader, Writer>, position: u64) -> Self {
         Self { session, position }
     }
 
-    pub async fn deliver_only<Arg: Serialize>(
-        &self,
-        args: Vec<Arg>,
-    ) -> Result<(), futures::io::Error>
+    pub async fn deliver_only<Arg: Serialize>(&self, args: Vec<Arg>) -> Result<(), SendError>
     where
-        Socket: AsyncWrite + Unpin,
+        Writer: AsyncWrite + Unpin,
     {
         self.session.deliver_only(self.position, args).await
     }
@@ -112,22 +164,29 @@ impl<Socket> RemoteObject<Socket> {
         args: Vec<Arg>,
         answer_pos: Option<u64>,
         resolve_me_desc: DescImport,
-    ) -> Result<(), futures::io::Error>
+    ) -> Result<(), SendError>
     where
-        Socket: AsyncWrite + Unpin,
+        Writer: AsyncWrite + Unpin,
     {
         self.session
             .deliver(self.position, args, answer_pos, resolve_me_desc)
             .await
     }
 
+    pub async fn deliver_and<Arg: Serialize>(&self, args: Vec<Arg>) -> Result<Answer, SendError>
+    where
+        Writer: AsyncWrite + Unpin,
+    {
+        self.session.deliver_and(self.position, args).await
+    }
+
     pub async fn call_only<'arg, Arg: Serialize + 'arg>(
         &self,
         ident: impl AsRef<str>,
         args: impl IntoIterator<Item = &'arg Arg>,
-    ) -> Result<(), futures::io::Error>
+    ) -> Result<(), SendError>
     where
-        Socket: AsyncWrite + Unpin,
+        Writer: AsyncWrite + Unpin,
     {
         self.deliver_only(syrup::raw_syrup_unwrap![&Symbol(ident.as_ref()); args])
             .await
@@ -139,9 +198,9 @@ impl<Socket> RemoteObject<Socket> {
         args: impl IntoIterator<Item = &'arg Arg>,
         answer_pos: Option<u64>,
         resolve_me_desc: DescImport,
-    ) -> Result<(), futures::io::Error>
+    ) -> Result<(), SendError>
     where
-        Socket: AsyncWrite + Unpin,
+        Writer: AsyncWrite + Unpin,
     {
         self.deliver(
             syrup::raw_syrup_unwrap![&Symbol(ident.as_ref()); args],
@@ -150,46 +209,49 @@ impl<Socket> RemoteObject<Socket> {
         )
         .await
     }
+
+    pub async fn call_and<'arg, Arg: Serialize + 'arg>(
+        &self,
+        ident: impl AsRef<str>,
+        args: impl IntoIterator<Item = &'arg Arg>,
+    ) -> Result<Answer, SendError>
+    where
+        Writer: AsyncWrite + Unpin,
+    {
+        self.deliver_and(syrup::raw_syrup_unwrap![&Symbol(ident.as_ref()); args])
+            .await
+    }
 }
 
-pub struct LocalObject<Socket> {
-    session: CapTpSession<Socket>,
+pub struct ObjectInbox {
     position: u64,
     receiver: DeliveryReceiver,
 }
 
-impl<Socket> LocalObject<Socket> {
-    pub(crate) fn new(
-        session: CapTpSession<Socket>,
-        position: u64,
-        receiver: DeliveryReceiver,
-    ) -> Self {
-        Self {
-            session,
-            position,
-            receiver,
-        }
+impl ObjectInbox {
+    pub(crate) fn new(position: u64, receiver: DeliveryReceiver) -> Self {
+        Self { position, receiver }
     }
 
-    pub fn try_next(&mut self) -> Result<Option<Delivery>, futures::channel::mpsc::TryRecvError> {
+    #[inline]
+    pub fn position(&self) -> u64 {
+        self.position
+    }
+
+    #[cfg(all(feature = "futures", not(feature = "tokio")))]
+    pub fn try_next(&mut self) -> Result<Option<Delivery>, TryRecvError> {
         self.receiver.try_next()
     }
 }
 
-impl<Socket> futures::stream::Stream for LocalObject<Socket> {
+impl futures::stream::Stream for ObjectInbox {
     type Item = Delivery;
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        use futures::stream::Stream;
-        use std::task::{self, Poll};
-
-        match Stream::poll_next(std::pin::Pin::new(&mut self.receiver), cx) {
-            Poll::Ready(r) => Poll::Ready(r),
-            Poll::Pending => todo!(),
-        }
+        std::pin::pin!(&mut self.receiver).poll_next(cx)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -197,7 +259,7 @@ impl<Socket> futures::stream::Stream for LocalObject<Socket> {
     }
 }
 
-impl<Socket> futures::stream::FusedStream for LocalObject<Socket> {
+impl futures::stream::FusedStream for ObjectInbox {
     fn is_terminated(&self) -> bool {
         futures::stream::FusedStream::is_terminated(&self.receiver)
     }

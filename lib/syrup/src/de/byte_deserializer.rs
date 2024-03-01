@@ -64,7 +64,16 @@ impl<'input> Deserializer<'input> for &mut ByteDeserializer<'input> {
     type Error = Error<'input>;
 
     fn deserialize_any<V: Visitor<'input>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        match self.peek().unwrap() {
+        let peek = match self.peek() {
+            Some(p) => p,
+            None => {
+                return Err(Error {
+                    input: Some(self.input),
+                    kind: crate::ErrorKind::Incomplete(nom::Needed::Unknown),
+                })
+            }
+        };
+        match peek {
             b't' | b'f' => self.deserialize_bool(visitor),
             b'F' => self.deserialize_f32(visitor),
             b'D' => self.deserialize_f64(visitor),

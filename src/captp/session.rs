@@ -1,14 +1,12 @@
 use super::{
-    msg::{DescImport, OpAbort, OpDeliver, OpDeliverOnly},
-    object::{
-        Answer, DeliveryReceiver, DeliverySender, LocalObject, RemoteBootstrap, RemoteObject,
-    },
+    msg::{DescImport, OpAbort, OpDeliver, OpDeliverOnly, Operation},
+    object::{RemoteBootstrap, RemoteObject},
 };
-use dashmap::{DashMap, DashSet};
+use crate::async_compat::{AsyncIoError, AsyncRead, AsyncWrite};
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use futures::{lock::Mutex, AsyncRead, AsyncWrite, SinkExt};
-use std::sync::{atomic::AtomicU64, Arc};
-use syrup::{de::DeserializeError, Deserialize, RawSyrup, Serialize};
+use futures::FutureExt;
+use std::sync::Arc;
+use syrup::{Deserialize, Serialize};
 
 mod builder;
 pub use builder::*;
@@ -22,183 +20,55 @@ pub use core::*;
 mod manager;
 pub use manager::*;
 
-#[derive(Debug, thiserror::Error)]
-pub enum RecvError {
-    #[error("failed to parse syrup: {0:?}")]
-    Parse(syrup::ErrorKind),
-    #[error(transparent)]
-    Io(#[from] futures::io::Error),
+mod error;
+pub use error::*;
+
+mod keymap;
+pub use keymap::*;
+
+mod registry;
+pub use registry::*;
+
+mod export_token;
+pub use export_token::*;
+
+mod internal;
+pub use internal::*;
+
+mod resolver;
+pub use resolver::*;
+
+mod event;
+pub use event::*;
+
+pub struct CapTpSession<Reader, Writer> {
+    base: Arc<CapTpSessionInternal<Reader, Writer>>,
 }
 
-impl<'input> From<syrup::Error<'input>> for RecvError {
-    fn from(value: syrup::Error<'input>) -> Self {
-        Self::Parse(value.kind)
+impl<Reader, Writer> std::fmt::Debug for CapTpSession<Reader, Writer> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let key_hash = crate::hash(self.remote_vkey());
+        f.debug_struct("CapTpSession")
+            .field("remote_vkey", &key_hash)
+            .finish_non_exhaustive()
     }
 }
 
-#[derive(Debug)]
-struct CapTpSessionInternal<Socket> {
-    core: Mutex<CapTpSessionCore<Socket>>,
-
-    signing_key: SigningKey,
-    remote_vkey: VerifyingKey,
-
-    /// Objects imported from the remote
-    imports: DashSet<u64>,
-    /// Objects exported to the remote
-    exports: DashMap<u64, DeliverySender>,
-
-    export_key: AtomicU64,
-
-    recv_buf: Mutex<Vec<u8>>,
-}
-
-impl<Socket> CapTpSessionInternal<Socket> {
-    pub(crate) fn new(
-        core: CapTpSessionCore<Socket>,
-        signing_key: SigningKey,
-        remote_vkey: VerifyingKey,
-    ) -> Self {
+impl<Reader, Writer> std::clone::Clone for CapTpSession<Reader, Writer> {
+    fn clone(&self) -> Self {
         Self {
-            core: Mutex::new(core),
-            signing_key,
-            remote_vkey,
-            imports: DashSet::new(),
-            // Bootstrap object handled internally.
-            exports: DashMap::new(),
-            export_key: 1.into(),
-            recv_buf: Mutex::new(Vec::new()),
+            base: self.base.clone(),
         }
-    }
-
-    async fn send_msg<Msg: Serialize>(&self, msg: &Msg) -> Result<(), futures::io::Error>
-    where
-        Socket: AsyncWrite + Unpin,
-    {
-        self.core.lock().await.send_msg(msg).await
-    }
-
-    async fn recv(&self, max_size: usize) -> Result<usize, futures::io::Error>
-    where
-        Socket: AsyncRead + Unpin,
-    {
-        let mut recv_vec = self.recv_buf.lock().await;
-        let orig_len = recv_vec.len();
-        let new_len = orig_len + max_size;
-        recv_vec.resize(new_len, 0);
-        let amt = {
-            let recv_buf = &mut recv_vec[orig_len..new_len];
-            self.core.lock().await.recv(recv_buf).await?
-        };
-        // drop unwritten bytes from the end of the vec
-        recv_vec.truncate(orig_len + amt);
-
-        Ok(amt)
-    }
-
-    async fn pop_msg<Msg>(&self) -> Result<Msg, RecvError>
-    where
-        for<'de> Msg: Deserialize<'de>,
-    {
-        let mut buf = self.recv_buf.lock().await;
-
-        let (rem, res) = syrup::de::nom_bytes::<Msg>(&buf)?;
-
-        let rem_len = rem.len();
-        buf.drain(..rem_len);
-
-        Ok(res)
-    }
-
-    async fn recv_msg<Msg>(&self) -> Result<Msg, RecvError>
-    where
-        Socket: AsyncRead + Unpin,
-        for<'de> Msg: Deserialize<'de>,
-    {
-        loop {
-            match self.pop_msg::<Msg>().await {
-                Ok(m) => {
-                    return Ok(m);
-                }
-                Err(e) => match e {
-                    RecvError::Parse(syrup::ErrorKind::Incomplete(n)) => {
-                        self.recv(match n {
-                            syrup::de::Needed::Unknown => 1024,
-                            syrup::de::Needed::Size(a) => a.into(),
-                        })
-                        .await?;
-                    }
-                    _ => return Err(e),
-                },
-            }
-        }
-    }
-
-    async fn try_recv_msg<Msg>(&self) -> Result<Option<Msg>, futures::io::Error>
-    where
-        Socket: AsyncRead + Unpin,
-        for<'de> Msg: Deserialize<'de>,
-    {
-        match self.recv_msg::<Msg>().await {
-            Ok(o) => Ok(Some(o)),
-            Err(RecvError::Parse(_)) => Ok(None),
-            Err(RecvError::Io(e)) => Err(e),
-        }
-    }
-
-    async fn process_next_operation(&self) -> Result<(), RecvError>
-    where
-        Socket: AsyncRead + Unpin,
-    {
-        if let Some(del_only) = self.try_recv_msg::<OpDeliverOnly<syrup::Item>>().await? {
-            match self
-                .exports
-                .get_mut(&del_only.to_desc.position)
-                .unwrap()
-                .send((del_only.args, None))
-                .await
-            {
-                Ok(_) => Ok(()),
-                Err(e) => todo!(),
-            }
-        } else if let Some(del) = self.try_recv_msg::<OpDeliver<syrup::Item>>().await? {
-            match self
-                .exports
-                .get_mut(&del.to_desc.position)
-                .unwrap()
-                .send((del.args, Some(del.resolve_me_desc)))
-                .await
-            {
-                Ok(_) => Ok(()),
-                Err(e) => todo!(),
-            }
-        } else if let Some(abort) = self.try_recv_msg::<OpAbort>().await? {
-            todo!()
-        } else {
-            Ok(())
-        }
-    }
-
-    /// Get the next export key and advance it by 1.
-    fn advance_export_key(&self) -> u64 {
-        self.export_key
-            .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
-    }
-
-    fn gen_export(self: Arc<Self>) -> LocalObject<Socket> {
-        let position = self.advance_export_key();
-        let (sender, receiver) = futures::channel::mpsc::unbounded();
-        self.exports.insert(position, sender);
-        LocalObject::new(CapTpSession { base: self }, position, receiver)
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct CapTpSession<Socket> {
-    base: Arc<CapTpSessionInternal<Socket>>,
+impl<Reader, Writer> PartialEq for CapTpSession<Reader, Writer> {
+    fn eq(&self, other: &Self) -> bool {
+        self.remote_vkey() == other.remote_vkey() && self.signing_key() == other.signing_key()
+    }
 }
 
-impl<Socket> CapTpSession<Socket> {
+impl<Reader, Writer> CapTpSession<Reader, Writer> {
     pub fn signing_key(&self) -> &SigningKey {
         &self.base.signing_key
     }
@@ -207,29 +77,24 @@ impl<Socket> CapTpSession<Socket> {
         &self.base.remote_vkey
     }
 
-    pub async fn recv_msg<Msg>(&self) -> Result<Msg, RecvError>
-    where
-        Socket: AsyncRead + Unpin,
-        for<'de> Msg: Deserialize<'de>,
-    {
-        self.base.recv_msg::<Msg>().await
+    pub fn export(&self, obj: Arc<dyn super::object::Object + Send + Sync>) -> u64 {
+        self.base.export(obj)
     }
 
-    pub async fn send_msg<Msg: Serialize>(&self, msg: &Msg) -> Result<(), futures::io::Error>
-    where
-        Socket: AsyncWrite + Unpin,
-    {
-        self.base.send_msg(msg).await
+    pub fn is_aborted(&self) -> bool {
+        self.base.is_aborted()
     }
 
-    pub async fn abort(self, reason: impl Into<OpAbort>) -> Result<(), futures::io::Error>
+    pub async fn abort(self, reason: impl Into<OpAbort>) -> Result<(), SendError>
     where
-        Socket: AsyncWrite + Unpin,
+        Writer: AsyncWrite + Unpin,
     {
-        self.send_msg(&reason.into()).await
+        let res = self.send_msg(&reason.into()).await;
+        self.base.local_abort();
+        res
     }
 
-    pub fn get_remote_object(self, position: u64) -> Option<RemoteObject<Socket>> {
+    pub fn get_remote_object(self, position: u64) -> Option<RemoteObject<Reader, Writer>> {
         if position != 0 && !self.base.imports.contains(&position) {
             None
         } else {
@@ -237,48 +102,309 @@ impl<Socket> CapTpSession<Socket> {
         }
     }
 
-    pub fn get_remote_bootstrap(self) -> RemoteBootstrap<Socket> {
+    pub fn get_remote_bootstrap(self) -> RemoteBootstrap<Reader, Writer> {
         RemoteBootstrap::new(self)
     }
 
-    pub(crate) async fn deliver_only<Arg: Serialize>(
+    // pub fn gen_export(&self) -> ObjectInbox<Socket> {
+    //     self.base.clone().gen_export()
+    // }
+
+    pub fn event_stream<'s>(
+        &'s self,
+    ) -> impl futures::stream::Stream<Item = Result<Event, RecvError>> + 's
+    where
+        Reader: AsyncRead + Send + Unpin + 'static,
+        Writer: AsyncWrite + Send + Unpin + 'static,
+    {
+        futures::stream::unfold(self, |session| async move {
+            Some((session.recv_event().await, session))
+        })
+    }
+
+    pub fn into_event_stream(
+        self,
+    ) -> impl futures::stream::Stream<Item = Result<Event, RecvError>> + Unpin
+    where
+        Reader: AsyncRead + Unpin + Send + 'static,
+        Writer: AsyncWrite + Unpin + Send + 'static,
+    {
+        use futures::StreamExt;
+        async fn recv<Reader, Writer>(
+            session: CapTpSession<Reader, Writer>,
+        ) -> Option<(Result<Event, RecvError>, CapTpSession<Reader, Writer>)>
+        where
+            Reader: AsyncRead + Send + Unpin + 'static,
+            Writer: AsyncWrite + Send + Unpin + 'static,
+        {
+            Some((session.recv_event().await, session))
+        }
+        futures::stream::unfold(self, recv).boxed()
+    }
+
+    // #[tracing::instrument()]
+    pub async fn recv_event(&self) -> Result<Event, RecvError>
+    where
+        Reader: AsyncRead + Send + Unpin + 'static,
+        Writer: AsyncWrite + Send + Unpin + 'static,
+    {
+        fn bootstrap_deliver_only(args: Vec<syrup::Item>) -> Event {
+            use syrup::Item;
+            let mut args = args.into_iter();
+            match args.next() {
+                Some(Item::Symbol(ident)) => match ident.as_str() {
+                    "deposit-gift" => todo!("bootstrap: deposit-gift"),
+                    id => todo!("unrecognized bootstrap function: {id}"),
+                },
+                _ => todo!(),
+            }
+        }
+        fn bootstrap_deliver<Reader, Writer>(
+            session: CapTpSession<Reader, Writer>,
+            args: Vec<syrup::Item>,
+            answer_pos: Option<u64>,
+            resolve_me_desc: DescImport,
+        ) -> Event
+        where
+            Writer: AsyncWrite + Send + Unpin + 'static,
+            Reader: Send + 'static,
+        {
+            use syrup::Item;
+            let mut args = args.into_iter();
+            match args.next() {
+                Some(Item::Symbol(ident)) => match ident.as_str() {
+                    "fetch" => {
+                        let swiss = match args.next() {
+                            Some(Item::Bytes(swiss)) => swiss,
+                            Some(s) => todo!("malformed swiss num: {s:?}"),
+                            None => todo!("missing swiss num"),
+                        };
+                        Event::Bootstrap(BootstrapEvent::Fetch {
+                            resolver: GenericResolver::new(
+                                session.base,
+                                answer_pos,
+                                resolve_me_desc,
+                            )
+                            .into(),
+                            swiss,
+                        })
+                    }
+                    "withdraw-gift" => todo!("bootstrap: withdraw-gift"),
+                    id => todo!("unrecognized bootstrap function: {id}"),
+                },
+                _ => todo!(),
+            }
+        }
+        loop {
+            tracing::trace!("awaiting message");
+            let msg = self.recv_msg::<Operation<syrup::Item>>().await?;
+            tracing::debug!(?msg, "received message");
+            match msg {
+                Operation::DeliverOnly(del) => match del.to_desc.position {
+                    0 => break Ok(bootstrap_deliver_only(del.args)),
+                    pos => {
+                        // let del = Delivery::DeliverOnly {
+                        //     to_desc: del.to_desc,
+                        //     args: del.args,
+                        // };
+                        // break Ok(Event::Delivery(del));
+                        match self.base.exports.get(&pos) {
+                            Some(obj) => obj.deliver_only(del.args),
+                            None => break Err(RecvError::UnknownTarget(pos, del.args)),
+                        }
+                    }
+                },
+                Operation::Deliver(del) => match del.to_desc.position {
+                    0 => {
+                        break Ok(bootstrap_deliver(
+                            self.clone(),
+                            del.args,
+                            del.answer_pos,
+                            del.resolve_me_desc,
+                        ))
+                    }
+                    pos => {
+                        // let del = Delivery::Deliver {
+                        //     to_desc: del.to_desc,
+                        //     args: del.args,
+                        //     resolver: GenericResolver {
+                        //         session: self.clone(),
+                        //         answer_pos: del.answer_pos,
+                        //         resolve_me_desc: del.resolve_me_desc,
+                        //     },
+                        // };
+                        // break Ok(Event::Delivery(del));
+                        match self.base.exports.get(&pos) {
+                            Some(obj) => obj.deliver(
+                                del.args,
+                                GenericResolver::new(
+                                    self.base.clone(),
+                                    del.answer_pos,
+                                    del.resolve_me_desc,
+                                ),
+                            ),
+                            None => break Err(RecvError::UnknownTarget(pos, del.args)),
+                        }
+                    }
+                },
+                Operation::Abort(OpAbort { reason }) => {
+                    self.base.set_remote_abort(reason.clone());
+                    break Ok(Event::Abort(reason));
+                }
+            }
+        }
+    }
+}
+
+trait AbstractCapTpSession {
+    fn deliver_only<'f>(
+        &'f self,
+        position: u64,
+        args: Vec<syrup::RawSyrup>,
+    ) -> futures::future::BoxFuture<'f, Result<(), SendError>>;
+    fn deliver<'f>(
+        &'f self,
+        position: u64,
+        args: Vec<syrup::RawSyrup>,
+        answer_pos: Option<u64>,
+        resolve_me_desc: DescImport,
+    ) -> futures::future::BoxFuture<'f, Result<(), SendError>>;
+    fn deliver_and<'f>(
+        &'f self,
+        position: u64,
+        args: Vec<syrup::RawSyrup>,
+    ) -> futures::future::BoxFuture<'f, Result<super::object::Answer, SendError>>;
+}
+
+impl<Reader: Send, Writer: AsyncWrite + Unpin + Send> AbstractCapTpSession
+    for CapTpSessionInternal<Reader, Writer>
+{
+    fn deliver_only<'f>(
+        &'f self,
+        position: u64,
+        args: Vec<syrup::RawSyrup>,
+    ) -> futures::future::BoxFuture<'f, Result<(), SendError>> {
+        async move {
+            let del = OpDeliverOnly::new(position, args);
+            self.send_msg(&del).await
+        }
+        .boxed()
+    }
+
+    fn deliver<'f>(
+        &'f self,
+        position: u64,
+        args: Vec<syrup::RawSyrup>,
+        answer_pos: Option<u64>,
+        resolve_me_desc: DescImport,
+    ) -> futures::future::BoxFuture<'f, Result<(), SendError>> {
+        async move {
+            let del = OpDeliver::new(position, args, answer_pos, resolve_me_desc);
+            self.send_msg(&del).await
+        }
+        .boxed()
+    }
+
+    fn deliver_and<'f>(
+        &'f self,
+        position: u64,
+        args: Vec<syrup::RawSyrup>,
+    ) -> futures::future::BoxFuture<'f, Result<super::object::Answer, SendError>> {
+        let (resolver, answer) = super::object::Resolver::new();
+        let pos = self.export(resolver);
+        async move {
+            self.deliver(position, args, None, DescImport::Object(pos.into()))
+                .await?;
+            Ok(answer)
+        }
+        .boxed()
+    }
+}
+
+impl<Reader, Writer> CapTpSession<Reader, Writer> {
+    pub async fn deliver_only<Arg: Serialize>(
         &self,
         position: u64,
         args: Vec<Arg>,
-    ) -> Result<(), futures::io::Error>
+    ) -> Result<(), SendError>
     where
-        Socket: AsyncWrite + Unpin,
+        Writer: AsyncWrite + Unpin,
     {
         self.send_msg(&OpDeliverOnly::new(position, args)).await
     }
 
-    pub(crate) async fn deliver<Arg: Serialize>(
+    pub async fn deliver<Arg: Serialize>(
         &self,
         position: u64,
         args: Vec<Arg>,
         answer_pos: Option<u64>,
         resolve_me_desc: DescImport,
-    ) -> Result<(), futures::io::Error>
+    ) -> Result<(), SendError>
     where
-        Socket: AsyncWrite + Unpin,
+        Writer: AsyncWrite + Unpin,
     {
         self.send_msg(&OpDeliver::new(position, args, answer_pos, resolve_me_desc))
             .await
     }
 
-    pub fn gen_export(&self) -> LocalObject<Socket> {
-        self.base.clone().gen_export()
+    pub async fn deliver_and<Arg: Serialize>(
+        &self,
+        position: u64,
+        args: Vec<Arg>,
+    ) -> Result<super::object::Answer, SendError>
+    where
+        Writer: AsyncWrite + Unpin,
+    {
+        let (resolver, answer) = super::object::Resolver::new();
+        let pos = self.export(resolver);
+        self.deliver(position, args, None, DescImport::Object(pos.into()))
+            .await?;
+        Ok(answer)
     }
+
+    pub async fn recv_msg<Msg>(&self) -> Result<Msg, RecvError>
+    where
+        Reader: AsyncRead + Unpin,
+        for<'de> Msg: Deserialize<'de>,
+    {
+        self.base.recv_msg::<Msg>().await
+    }
+
+    pub async fn send_msg<Msg: Serialize>(&self, msg: &Msg) -> Result<(), SendError>
+    where
+        Writer: AsyncWrite + Unpin,
+    {
+        self.base.send_msg(msg).await
+    }
+
+    // pub(crate) async fn recv_delivery_for(
+    //     &self,
+    //     position: u64,
+    // ) -> Result<Delivery<Socket>, RecvError>
+    // where
+    //     Socket: AsyncRead + Unpin,
+    // {
+    //     loop {
+    //         match self.recv_event().await? {
+    //             Event::Delivery(del) if del.position() == position => break Ok(del),
+    //             ev => self.base.msg_queue_sender.send(ev).unwrap(),
+    //         }
+    //     }
+    // }
 }
 
-impl<Socket> From<Arc<CapTpSessionInternal<Socket>>> for CapTpSession<Socket> {
-    fn from(base: Arc<CapTpSessionInternal<Socket>>) -> Self {
+impl<Reader, Writer> From<Arc<CapTpSessionInternal<Reader, Writer>>>
+    for CapTpSession<Reader, Writer>
+{
+    fn from(base: Arc<CapTpSessionInternal<Reader, Writer>>) -> Self {
         Self { base }
     }
 }
 
-impl<Socket> From<&'_ Arc<CapTpSessionInternal<Socket>>> for CapTpSession<Socket> {
-    fn from(base: &'_ Arc<CapTpSessionInternal<Socket>>) -> Self {
+impl<Reader, Writer> From<&'_ Arc<CapTpSessionInternal<Reader, Writer>>>
+    for CapTpSession<Reader, Writer>
+{
+    fn from(base: &'_ Arc<CapTpSessionInternal<Reader, Writer>>) -> Self {
         Self { base: base.clone() }
     }
 }

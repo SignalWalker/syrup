@@ -15,7 +15,8 @@ pub struct TcpIpNetlayer {
     manager: RwLock<CapTpSessionManager<TcpStream>>,
 }
 
-impl Netlayer<TcpStream> for TcpIpNetlayer {
+impl Netlayer for TcpIpNetlayer {
+    type Socket = TcpStream;
     type Error = smol::io::Error;
 
     async fn connect<HintKey: Serialize, HintValue: Serialize>(

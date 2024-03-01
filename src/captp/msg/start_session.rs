@@ -2,10 +2,16 @@ use crate::{locator::NodeLocator, CAPTP_VERSION};
 use ed25519_dalek::{SignatureError, VerifyingKey};
 use syrup::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[syrup(name = "public-key")]
 pub struct PublicKey {
     pub ecc: VerifyingKey,
+}
+
+impl std::fmt::Debug for PublicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&syrup::ser::to_pretty(self).unwrap())
+    }
 }
 
 impl From<VerifyingKey> for PublicKey {
@@ -14,10 +20,16 @@ impl From<VerifyingKey> for PublicKey {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[syrup(name = "sig-val")]
 pub struct Signature {
     pub eddsa: ed25519_dalek::Signature,
+}
+
+impl std::fmt::Debug for Signature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&syrup::ser::to_pretty(self).unwrap())
+    }
 }
 
 impl From<ed25519_dalek::Signature> for Signature {
@@ -26,13 +38,22 @@ impl From<ed25519_dalek::Signature> for Signature {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[syrup(name = "op:start-session", deserialize_bound = LocatorHKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; LocatorHVal: Deserialize<'__de>)]
 pub struct OpStartSession<LocatorHKey, LocatorHVal> {
     pub captp_version: String,
     pub session_pubkey: PublicKey,
     pub acceptable_location: NodeLocator<LocatorHKey, LocatorHVal>,
     pub acceptable_location_sig: Signature,
+}
+
+impl<HKey, HVal> std::fmt::Debug for OpStartSession<HKey, HVal>
+where
+    Self: syrup::Serialize,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&syrup::ser::to_pretty(self).unwrap())
+    }
 }
 
 impl<HKey, HVal> OpStartSession<HKey, HVal> {

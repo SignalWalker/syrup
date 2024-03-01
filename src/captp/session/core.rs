@@ -1,21 +1,39 @@
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Future};
 use syrup::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy)]
-pub struct CapTpSessionCore<Socket> {
-    pub(crate) socket: Socket,
+use crate::async_compat::{AsyncRead, AsyncWrite};
+
+#[cfg(all(feature = "futures", not(feature = "tokio")))]
+use futures::{lock::Mutex, AsyncReadExt, AsyncWriteExt, Future};
+#[cfg(all(feature = "tokio", not(feature = "futures")))]
+use std::future::Future;
+#[cfg(all(feature = "tokio", not(feature = "futures")))]
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::Mutex,
+};
+
+use super::AsyncIoError;
+
+#[derive(Debug)]
+pub struct CapTpSessionCore<Reader, Writer> {
+    pub(crate) reader: Mutex<Reader>,
+    pub(crate) writer: Mutex<Writer>,
 }
 
-impl<Socket> CapTpSessionCore<Socket> {
+impl<Reader, Writer> CapTpSessionCore<Reader, Writer> {
+    pub(crate) fn new(reader: Reader, writer: Writer) -> Self {
+        Self {
+            reader: Mutex::new(reader),
+            writer: Mutex::new(writer),
+        }
+    }
+
     #[inline]
-    pub(crate) fn recv<'read>(
-        &'read mut self,
-        buf: &'read mut [u8],
-    ) -> impl Future<Output = Result<usize, futures::io::Error>> + 'read
+    pub(crate) async fn recv(&self, buf: &mut [u8]) -> Result<usize, AsyncIoError>
     where
-        Socket: AsyncRead + Unpin,
+        Reader: AsyncRead + Unpin,
     {
-        self.socket.read(buf)
+        self.reader.lock().await.read(buf).await
     }
 
     // #[inline]
@@ -30,42 +48,34 @@ impl<Socket> CapTpSessionCore<Socket> {
     // }
 
     #[inline]
-    pub(crate) fn send_all<'write>(
-        &'write mut self,
-        buf: &'write [u8],
-    ) -> impl Future<Output = Result<(), futures::io::Error>> + 'write
+    pub(crate) async fn send_all(&self, buf: &[u8]) -> Result<(), AsyncIoError>
     where
-        Socket: AsyncWrite + Unpin,
+        Writer: AsyncWrite + Unpin,
     {
-        self.socket.write_all(buf)
+        self.writer.lock().await.write_all(buf).await
     }
 
-    pub(crate) async fn send_msg<Msg: Serialize>(
-        &mut self,
-        msg: &Msg,
-    ) -> Result<(), futures::io::Error>
+    pub(crate) async fn send_msg<Msg: Serialize>(&self, msg: &Msg) -> Result<(), AsyncIoError>
     where
-        Socket: AsyncWrite + Unpin,
+        Writer: AsyncWrite + Unpin,
     {
         // TODO :: custom error type
         self.send_all(&syrup::ser::to_bytes(msg).unwrap()).await
     }
 
-    pub(crate) fn flush<'flush>(
-        &'flush mut self,
-    ) -> impl Future<Output = Result<(), futures::io::Error>> + 'flush
+    pub(crate) async fn flush(&self) -> Result<(), AsyncIoError>
     where
-        Socket: AsyncWrite + Unpin,
+        Writer: AsyncWrite + Unpin,
     {
-        self.socket.flush()
+        self.writer.lock().await.flush().await
     }
 
     pub(crate) async fn recv_msg<'de, Msg: Deserialize<'de>>(
-        &mut self,
+        &self,
         recv_buf: &'de mut [u8],
-    ) -> Result<Msg, futures::io::Error>
+    ) -> Result<Msg, AsyncIoError>
     where
-        Socket: AsyncRead + Unpin,
+        Reader: AsyncRead + Unpin,
     {
         let amt = self.recv(recv_buf).await?;
         Ok(syrup::de::from_bytes(&recv_buf[..amt]).unwrap())

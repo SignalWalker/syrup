@@ -194,7 +194,7 @@ pub fn from_bytes<'i, T: Deserialize<'i>>(input: &'i [u8]) -> Result<T, Error<'i
     if de.input.is_empty() {
         Ok(res)
     } else {
-        todo!()
+        todo!("trailing characters")
         // Err(Error::TrailingCharacters)
     }
 }

@@ -1,0 +1,6 @@
+{
+	"cargo": {
+		"noDefaultFeatures": true,
+		"features": [ "tokio", "extra_diagnostics" ]
+	}
+}

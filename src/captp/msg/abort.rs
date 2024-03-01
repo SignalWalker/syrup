@@ -1,9 +1,15 @@
 use syrup::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[syrup(name = "op:abort")]
 pub struct OpAbort {
     pub reason: String,
+}
+
+impl std::fmt::Debug for OpAbort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&syrup::ser::to_pretty(self).unwrap())
+    }
 }
 
 impl From<String> for OpAbort {

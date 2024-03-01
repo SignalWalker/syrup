@@ -32,6 +32,7 @@ impl<S: Serialize> Serialize for Box<S> {
 
 impl_serialize_simple!(bool, serialize_bool);
 impl_serialize_simple!(self, self, str, serialize_str);
+impl_serialize_simple!(self, *self, &str, serialize_str);
 impl_serialize_simple!(self, self.as_str(), String, serialize_str);
 impl_serialize_simple!(self, self.0, Symbol<&str>, serialize_sym);
 impl_serialize_simple!(self, self.0.as_str(), Symbol<String>, serialize_sym);

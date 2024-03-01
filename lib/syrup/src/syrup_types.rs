@@ -125,6 +125,24 @@ impl<const LEN: usize> Serialize for Bytes<[u8; LEN]> {
     }
 }
 
+impl<'input> Deserialize<'input> for Bytes<&'input [u8]> {
+    fn deserialize<D: crate::de::Deserializer<'input>>(de: D) -> Result<Self, D::Error> {
+        crate::bytes::slice::deserialize(de).map(Self)
+    }
+}
+
+impl<'input> Deserialize<'input> for Bytes<Vec<u8>> {
+    fn deserialize<D: crate::de::Deserializer<'input>>(de: D) -> Result<Self, D::Error> {
+        crate::bytes::vec::deserialize(de).map(Self)
+    }
+}
+
+impl<'input, const LEN: usize> Deserialize<'input> for Bytes<[u8; LEN]> {
+    fn deserialize<D: crate::de::Deserializer<'input>>(de: D) -> Result<Self, D::Error> {
+        crate::bytes::array::deserialize(de).map(Self)
+    }
+}
+
 impl<'b> From<&'b [u8]> for Bytes<&'b [u8]> {
     #[inline]
     fn from(value: &'b [u8]) -> Self {
@@ -167,6 +185,7 @@ impl<const LEN: usize> From<Bytes<[u8; LEN]>> for [u8; LEN] {
     }
 }
 
+#[derive(Clone)]
 pub enum Item {
     Bool(bool),
     F32(f32),
@@ -191,6 +210,12 @@ pub enum Item {
     Sequence(Vec<Item>),
     Record(Symbol<String>, Vec<Item>),
     Set(Vec<Item>),
+}
+
+impl std::fmt::Debug for Item {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&crate::ser::to_pretty(self).unwrap())
+    }
 }
 
 pub trait FromSyrupItem: Sized {

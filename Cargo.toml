@@ -9,8 +9,14 @@ readme = true
 repository = "https://github.com/SignalWalker/rexa"
 license = "LGPL-3.0-or-later"
 
-categories = [ "asynchronous", "authentication", "concurrency", "cryptography", "network-programming" ]
-keywords = [ "ocap", "ocapn", "object-capabilities" ]
+categories = [
+  "asynchronous",
+  "authentication",
+  "concurrency",
+  "cryptography",
+  "network-programming",
+]
+keywords = ["ocap", "ocapn", "object-capabilities"]
 
 [dependencies]
 # meta
@@ -32,23 +38,38 @@ ed25519-dalek = { version = "^2", features = ["rand_core"] }
 syrup = { path = "lib/syrup" }
 
 # netlayers
+flume = { version = "^0.11", features = ["async"] }
 futures = { version = "^0.3" }
-smol = "^2"
+smol = { version = "^2", optional = true }
+tokio = { version = "^1.36", optional = true, features = ["io-util", "sync"] }
 ## tor
-arti-client = { version = "^0.12", git = "https://gitlab.torproject.org/tpo/core/arti", features = ["onion-service-client"], optional = true }
-tor-rtcompat = { version = "^0.9", git = "https://gitlab.torproject.org/tpo/core/arti", features = [], optional = true }
+arti-client = { version = "^0.12", git = "https://gitlab.torproject.org/tpo/core/arti", features = [
+  "onion-service-client",
+], optional = true }
+tor-rtcompat = { version = "^0.9", git = "https://gitlab.torproject.org/tpo/core/arti", features = [
+], optional = true }
 
 [dev-dependencies]
 proptest = { version = "^1.4" }
 lazy_static = { version = "^1.4" }
 
 easy-parallel = "^3"
-tracing-subscriber = { version = "^0.3", features = [ "time", "env-filter", "parking_lot", "local-time", "json" ] }
+tracing-subscriber = { version = "^0.3", features = [
+  "time",
+  "env-filter",
+  "parking_lot",
+  "local-time",
+  "json",
+] }
 time = { version = "^0.3", features = ["formatting", "local-offset", "macros"] }
 
 [build-dependencies]
 
 [features]
-default = []
+default = ["futures", "extra_diagnostics"]
+extra_diagnostics = []
+futures = []
+tokio = ["dep:tokio"]
 netlayer-onion = ["dep:arti-client", "dep:tor-rtcompat"]
 netlayer-mock = []
+netlayer-tcpip-smol = ["dep:smol"]

@@ -3,6 +3,9 @@ mod impl_serialize;
 mod byte_serializer;
 pub use byte_serializer::*;
 
+mod pretty_serializer;
+pub use pretty_serializer::*;
+
 pub trait SerializeError {}
 
 pub trait SerializeDict {
