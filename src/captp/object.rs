@@ -2,22 +2,7 @@ use super::{msg::DescImport, CapTpSession, Delivery, GenericResolver, SendError}
 use std::{any::Any, sync::Arc};
 use syrup::{raw_syrup, Serialize, Symbol};
 
-#[cfg(all(feature = "futures", not(feature = "tokio")))]
-use futures::{
-    channel::{
-        mpsc::{self, TryRecvError},
-        oneshot,
-    },
-    AsyncWrite, Future,
-};
-#[cfg(all(feature = "tokio", not(feature = "futures")))]
-use tokio::{
-    io::AsyncWrite,
-    sync::{
-        mpsc::{self, error::TryRecvError},
-        oneshot,
-    },
-};
+use crate::async_compat::{oneshot, AsyncWrite};
 
 mod promise;
 pub use promise::*;
@@ -124,20 +109,13 @@ pub struct Answer {
 }
 
 impl std::future::Future for Answer {
-    type Output = <PromiseReceiver as futures::Future>::Output;
+    type Output = <PromiseReceiver as std::future::Future>::Output;
 
     fn poll(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        #[cfg(all(feature = "futures", not(feature = "tokio")))]
-        {
-            futures::Future::poll(std::pin::pin!(&mut self.receiver), cx)
-        }
-        #[cfg(all(feature = "tokio", not(feature = "futures")))]
-        {
-            std::future::Future::poll(std::pin::pin!(&mut self.receiver), cx)
-        }
+        std::future::Future::poll(std::pin::pin!(&mut self.receiver), cx)
     }
 }
 
@@ -236,11 +214,6 @@ impl ObjectInbox {
     #[inline]
     pub fn position(&self) -> u64 {
         self.position
-    }
-
-    #[cfg(all(feature = "futures", not(feature = "tokio")))]
-    pub fn try_next(&mut self) -> Result<Option<Delivery>, TryRecvError> {
-        self.receiver.try_next()
     }
 }
 

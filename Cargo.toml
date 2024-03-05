@@ -25,6 +25,12 @@ tracing = "^0.1"
 
 crossbeam = { version = "^0.8" }
 
+futures = { version = "^0.3" }
+tokio = { version = "^1.36", optional = true, default-features = false, features = [
+  "io-util",
+  "sync",
+] }
+
 # captp
 dashmap = { version = "^5" }
 ## crypto
@@ -38,22 +44,22 @@ ed25519-dalek = { version = "^2", features = ["rand_core"] }
 syrup = { path = "lib/syrup" }
 
 # netlayers
-flume = { version = "^0.11", features = ["async"] }
-futures = { version = "^0.3" }
-smol = { version = "^2", optional = true }
-tokio = { version = "^1.36", optional = true, features = ["io-util", "sync"] }
-## tor
-arti-client = { version = "^0.12", git = "https://gitlab.torproject.org/tpo/core/arti", features = [
+# netlayer-mock
+lazy_static = { version = "^1.4", optional = true }
+## netlayer-onion
+arti-client = { version = "^0.14", git = "https://gitlab.torproject.org/tpo/core/arti", features = [
   "onion-service-client",
+  "onion-service-service",
 ], optional = true }
-tor-rtcompat = { version = "^0.9", git = "https://gitlab.torproject.org/tpo/core/arti", features = [
-], optional = true }
+tor-rtcompat = { version = "^0.10", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
+tor-hsservice = { version = "^0.7", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
+tor-cell = { version = "^0.16", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
+tor-hscrypto = { version = "^0.6", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
 
 [dev-dependencies]
 proptest = { version = "^1.4" }
 lazy_static = { version = "^1.4" }
 
-easy-parallel = "^3"
 tracing-subscriber = { version = "^0.3", features = [
   "time",
   "env-filter",
@@ -66,10 +72,28 @@ time = { version = "^0.3", features = ["formatting", "local-offset", "macros"] }
 [build-dependencies]
 
 [features]
-default = ["futures", "extra_diagnostics"]
-extra_diagnostics = []
-futures = []
-tokio = ["dep:tokio"]
-netlayer-onion = ["dep:arti-client", "dep:tor-rtcompat"]
-netlayer-mock = []
-netlayer-tcpip-smol = ["dep:smol"]
+default = ["extra-diagnostics"]
+extra-diagnostics = []
+tokio = ["dep:tokio", "tor-rtcompat?/tokio"]
+netlayer-mock = ["dep:lazy_static"]
+netlayer-datastream = ["tokio?/net"]
+netlayer-onion = [
+  "dep:arti-client",
+  "dep:tor-rtcompat",
+  "dep:tor-hsservice",
+  "dep:tor-cell",
+]
+test-deps = ["tokio", "tokio/rt-multi-thread", "tokio/process", "tokio/macros"]
+
+
+[[test]]
+name = "ocapn_test_suite"
+required-features = ["netlayer-onion", "test-deps"]
+
+[[test]]
+name = "session"
+required-features = ["netlayer-mock", "test-deps"]
+
+[[test]]
+name = "deliver"
+required-features = ["netlayer-mock", "test-deps"]

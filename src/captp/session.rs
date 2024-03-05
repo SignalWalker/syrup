@@ -2,7 +2,7 @@ use super::{
     msg::{DescImport, OpAbort, OpDeliver, OpDeliverOnly, Operation},
     object::{RemoteBootstrap, RemoteObject},
 };
-use crate::async_compat::{AsyncIoError, AsyncRead, AsyncWrite};
+use crate::async_compat::{AsyncRead, AsyncWrite};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::FutureExt;
 use std::sync::Arc;
@@ -41,6 +41,9 @@ pub use resolver::*;
 mod event;
 pub use event::*;
 
+mod traits;
+pub use traits::*;
+
 pub struct CapTpSession<Reader, Writer> {
     base: Arc<CapTpSessionInternal<Reader, Writer>>,
 }
@@ -65,6 +68,22 @@ impl<Reader, Writer> std::clone::Clone for CapTpSession<Reader, Writer> {
 impl<Reader, Writer> PartialEq for CapTpSession<Reader, Writer> {
     fn eq(&self, other: &Self) -> bool {
         self.remote_vkey() == other.remote_vkey() && self.signing_key() == other.signing_key()
+    }
+}
+
+impl<Reader, Writer> From<Arc<CapTpSessionInternal<Reader, Writer>>>
+    for CapTpSession<Reader, Writer>
+{
+    fn from(base: Arc<CapTpSessionInternal<Reader, Writer>>) -> Self {
+        Self { base }
+    }
+}
+
+impl<Reader, Writer> From<&'_ Arc<CapTpSessionInternal<Reader, Writer>>>
+    for CapTpSession<Reader, Writer>
+{
+    fn from(base: &'_ Arc<CapTpSessionInternal<Reader, Writer>>) -> Self {
+        Self { base: base.clone() }
     }
 }
 
@@ -148,176 +167,7 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
         Reader: AsyncRead + Send + Unpin + 'static,
         Writer: AsyncWrite + Send + Unpin + 'static,
     {
-        fn bootstrap_deliver_only(args: Vec<syrup::Item>) -> Event {
-            use syrup::Item;
-            let mut args = args.into_iter();
-            match args.next() {
-                Some(Item::Symbol(ident)) => match ident.as_str() {
-                    "deposit-gift" => todo!("bootstrap: deposit-gift"),
-                    id => todo!("unrecognized bootstrap function: {id}"),
-                },
-                _ => todo!(),
-            }
-        }
-        fn bootstrap_deliver<Reader, Writer>(
-            session: CapTpSession<Reader, Writer>,
-            args: Vec<syrup::Item>,
-            answer_pos: Option<u64>,
-            resolve_me_desc: DescImport,
-        ) -> Event
-        where
-            Writer: AsyncWrite + Send + Unpin + 'static,
-            Reader: Send + 'static,
-        {
-            use syrup::Item;
-            let mut args = args.into_iter();
-            match args.next() {
-                Some(Item::Symbol(ident)) => match ident.as_str() {
-                    "fetch" => {
-                        let swiss = match args.next() {
-                            Some(Item::Bytes(swiss)) => swiss,
-                            Some(s) => todo!("malformed swiss num: {s:?}"),
-                            None => todo!("missing swiss num"),
-                        };
-                        Event::Bootstrap(BootstrapEvent::Fetch {
-                            resolver: GenericResolver::new(
-                                session.base,
-                                answer_pos,
-                                resolve_me_desc,
-                            )
-                            .into(),
-                            swiss,
-                        })
-                    }
-                    "withdraw-gift" => todo!("bootstrap: withdraw-gift"),
-                    id => todo!("unrecognized bootstrap function: {id}"),
-                },
-                _ => todo!(),
-            }
-        }
-        loop {
-            tracing::trace!("awaiting message");
-            let msg = self.recv_msg::<Operation<syrup::Item>>().await?;
-            tracing::debug!(?msg, "received message");
-            match msg {
-                Operation::DeliverOnly(del) => match del.to_desc.position {
-                    0 => break Ok(bootstrap_deliver_only(del.args)),
-                    pos => {
-                        // let del = Delivery::DeliverOnly {
-                        //     to_desc: del.to_desc,
-                        //     args: del.args,
-                        // };
-                        // break Ok(Event::Delivery(del));
-                        match self.base.exports.get(&pos) {
-                            Some(obj) => obj.deliver_only(del.args),
-                            None => break Err(RecvError::UnknownTarget(pos, del.args)),
-                        }
-                    }
-                },
-                Operation::Deliver(del) => match del.to_desc.position {
-                    0 => {
-                        break Ok(bootstrap_deliver(
-                            self.clone(),
-                            del.args,
-                            del.answer_pos,
-                            del.resolve_me_desc,
-                        ))
-                    }
-                    pos => {
-                        // let del = Delivery::Deliver {
-                        //     to_desc: del.to_desc,
-                        //     args: del.args,
-                        //     resolver: GenericResolver {
-                        //         session: self.clone(),
-                        //         answer_pos: del.answer_pos,
-                        //         resolve_me_desc: del.resolve_me_desc,
-                        //     },
-                        // };
-                        // break Ok(Event::Delivery(del));
-                        match self.base.exports.get(&pos) {
-                            Some(obj) => obj.deliver(
-                                del.args,
-                                GenericResolver::new(
-                                    self.base.clone(),
-                                    del.answer_pos,
-                                    del.resolve_me_desc,
-                                ),
-                            ),
-                            None => break Err(RecvError::UnknownTarget(pos, del.args)),
-                        }
-                    }
-                },
-                Operation::Abort(OpAbort { reason }) => {
-                    self.base.set_remote_abort(reason.clone());
-                    break Ok(Event::Abort(reason));
-                }
-            }
-        }
-    }
-}
-
-trait AbstractCapTpSession {
-    fn deliver_only<'f>(
-        &'f self,
-        position: u64,
-        args: Vec<syrup::RawSyrup>,
-    ) -> futures::future::BoxFuture<'f, Result<(), SendError>>;
-    fn deliver<'f>(
-        &'f self,
-        position: u64,
-        args: Vec<syrup::RawSyrup>,
-        answer_pos: Option<u64>,
-        resolve_me_desc: DescImport,
-    ) -> futures::future::BoxFuture<'f, Result<(), SendError>>;
-    fn deliver_and<'f>(
-        &'f self,
-        position: u64,
-        args: Vec<syrup::RawSyrup>,
-    ) -> futures::future::BoxFuture<'f, Result<super::object::Answer, SendError>>;
-}
-
-impl<Reader: Send, Writer: AsyncWrite + Unpin + Send> AbstractCapTpSession
-    for CapTpSessionInternal<Reader, Writer>
-{
-    fn deliver_only<'f>(
-        &'f self,
-        position: u64,
-        args: Vec<syrup::RawSyrup>,
-    ) -> futures::future::BoxFuture<'f, Result<(), SendError>> {
-        async move {
-            let del = OpDeliverOnly::new(position, args);
-            self.send_msg(&del).await
-        }
-        .boxed()
-    }
-
-    fn deliver<'f>(
-        &'f self,
-        position: u64,
-        args: Vec<syrup::RawSyrup>,
-        answer_pos: Option<u64>,
-        resolve_me_desc: DescImport,
-    ) -> futures::future::BoxFuture<'f, Result<(), SendError>> {
-        async move {
-            let del = OpDeliver::new(position, args, answer_pos, resolve_me_desc);
-            self.send_msg(&del).await
-        }
-        .boxed()
-    }
-
-    fn deliver_and<'f>(
-        &'f self,
-        position: u64,
-        args: Vec<syrup::RawSyrup>,
-    ) -> futures::future::BoxFuture<'f, Result<super::object::Answer, SendError>> {
-        let (resolver, answer) = super::object::Resolver::new();
-        let pos = self.export(resolver);
-        async move {
-            self.deliver(position, args, None, DescImport::Object(pos.into()))
-                .await?;
-            Ok(answer)
-        }
-        .boxed()
+        self.base.recv_event().await
     }
 }
 
@@ -391,20 +241,4 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
     //         }
     //     }
     // }
-}
-
-impl<Reader, Writer> From<Arc<CapTpSessionInternal<Reader, Writer>>>
-    for CapTpSession<Reader, Writer>
-{
-    fn from(base: Arc<CapTpSessionInternal<Reader, Writer>>) -> Self {
-        Self { base }
-    }
-}
-
-impl<Reader, Writer> From<&'_ Arc<CapTpSessionInternal<Reader, Writer>>>
-    for CapTpSession<Reader, Writer>
-{
-    fn from(base: &'_ Arc<CapTpSessionInternal<Reader, Writer>>) -> Self {
-        Self { base: base.clone() }
-    }
 }

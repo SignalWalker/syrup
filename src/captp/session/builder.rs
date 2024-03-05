@@ -1,12 +1,13 @@
 use super::CapTpSession;
 use crate::{
-    async_compat::{AsyncIoError, AsyncRead, AsyncWrite},
+    async_compat::{AsyncRead, AsyncWrite},
     captp::{msg::OpStartSession, session::CapTpSessionManager, CapTpSessionCore},
     locator::NodeLocator,
     CAPTP_VERSION,
 };
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
+use std::future::Future;
 use std::sync::Arc;
 use syrup::{Deserialize, Serialize};
 
@@ -38,45 +39,47 @@ impl<'m, Reader, Writer> CapTpSessionBuilder<'m, Reader, Writer> {
     //     self
     // }
 
-    pub async fn and_accept<HKey, HVal>(
+    pub fn and_accept<HKey, HVal>(
         self,
         local_locator: NodeLocator<HKey, HVal>,
-    ) -> Result<CapTpSession<Reader, Writer>, AsyncIoError>
+    ) -> impl Future<Output = Result<CapTpSession<Reader, Writer>, std::io::Error>> + 'm
     where
         Reader: AsyncRead + Unpin,
         Writer: AsyncWrite + Unpin,
         NodeLocator<HKey, HVal>: Serialize,
-        OpStartSession<HKey, HVal>: Serialize,
+        OpStartSession<HKey, HVal>: Serialize + 'm,
     {
         tracing::debug!(local = %local_locator.designator, "accepting OpStartSession");
 
         let start_msg = self.generate_start_msg(local_locator);
         let mut core = CapTpSessionCore::new(self.reader, self.writer);
 
-        let (remote_vkey, remote_loc) =
-            Self::recv_start_session::<String, String>(&mut core).await?;
+        async move {
+            let (remote_vkey, remote_loc) =
+                Self::recv_start_session::<String, String>(&mut core).await?;
 
-        core.send_msg(&start_msg).await?;
-        core.flush().await?;
+            core.send_msg(&start_msg).await?;
+            core.flush().await?;
 
-        Ok(self.manager.finalize_session(
-            core,
-            self.signing_key,
-            remote_vkey,
-            remote_loc,
-            // self.registry.unwrap_or_default(),
-        ))
+            Ok(self.manager.finalize_session(
+                core,
+                self.signing_key,
+                remote_vkey,
+                remote_loc,
+                // self.registry.unwrap_or_default(),
+            ))
+        }
     }
 
-    pub async fn and_connect<HKey, HVal>(
+    pub fn and_connect<HKey, HVal>(
         self,
         local_locator: NodeLocator<HKey, HVal>,
-    ) -> Result<CapTpSession<Reader, Writer>, AsyncIoError>
+    ) -> impl Future<Output = Result<CapTpSession<Reader, Writer>, std::io::Error>> + 'm
     where
         Reader: AsyncRead + Unpin,
         Writer: AsyncWrite + Unpin,
         NodeLocator<HKey, HVal>: Serialize,
-        OpStartSession<HKey, HVal>: Serialize,
+        OpStartSession<HKey, HVal>: Serialize + 'm,
     {
         let local_designator = local_locator.designator.clone();
         tracing::debug!(local = %local_designator, "connecting with OpStartSession");
@@ -84,21 +87,23 @@ impl<'m, Reader, Writer> CapTpSessionBuilder<'m, Reader, Writer> {
         let start_msg = self.generate_start_msg(local_locator);
         let mut core = CapTpSessionCore::new(self.reader, self.writer);
 
-        core.send_msg(&start_msg).await?;
-        core.flush().await?;
+        async move {
+            core.send_msg(&start_msg).await?;
+            core.flush().await?;
 
-        tracing::debug!(local = %local_designator, "sent OpStartSession, receiving response");
+            tracing::debug!(local = %local_designator, "sent OpStartSession, receiving response");
 
-        let (remote_vkey, remote_loc) =
-            Self::recv_start_session::<String, String>(&mut core).await?;
+            let (remote_vkey, remote_loc) =
+                Self::recv_start_session::<String, String>(&mut core).await?;
 
-        Ok(self.manager.finalize_session(
-            core,
-            self.signing_key,
-            remote_vkey,
-            remote_loc,
-            // self.registry.unwrap_or_default(),
-        ))
+            Ok(self.manager.finalize_session(
+                core,
+                self.signing_key,
+                remote_vkey,
+                remote_loc,
+                // self.registry.unwrap_or_default(),
+            ))
+        }
     }
 
     fn generate_start_msg<HKey, HVal>(
@@ -120,7 +125,7 @@ impl<'m, Reader, Writer> CapTpSessionBuilder<'m, Reader, Writer> {
 
     pub(crate) async fn recv_start_session<HKey, HVal>(
         core: &CapTpSessionCore<Reader, Writer>,
-    ) -> Result<(VerifyingKey, NodeLocator<HKey, HVal>), AsyncIoError>
+    ) -> Result<(VerifyingKey, NodeLocator<HKey, HVal>), std::io::Error>
     where
         Reader: AsyncRead + Unpin,
         HKey: Serialize,

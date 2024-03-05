@@ -12,7 +12,10 @@ syrup-proc = { path = "../syrup-proc" }
 syrup-derive = { path = "../syrup-derive" }
 
 nom = { version = "^7.1" }
-ibig = { version = "^0.3", default-features = false, features = ["std", "num-traits"] }
+ibig = { version = "^0.3", default-features = false, features = [
+  "std",
+  "num-traits",
+] }
 
 # async stream
 futures = { version = "^0.3", optional = true }
@@ -28,7 +31,7 @@ proptest = { version = "^1.4" }
 lazy_static = { version = "^1.4" }
 
 [features]
-default = ["async-stream", "extra-ed25519"]
-async-stream = [ "dep:futures" ]
-serde = [ "dep:serde" ]
-extra-ed25519 = [ "dep:ed25519-dalek" ]
+default = ["extra-ed25519"]
+async-stream = ["dep:futures"]
+serde = ["dep:serde"]
+extra-ed25519 = ["dep:ed25519-dalek"]

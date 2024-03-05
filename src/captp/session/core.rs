@@ -1,18 +1,5 @@
+use crate::async_compat::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Mutex};
 use syrup::{Deserialize, Serialize};
-
-use crate::async_compat::{AsyncRead, AsyncWrite};
-
-#[cfg(all(feature = "futures", not(feature = "tokio")))]
-use futures::{lock::Mutex, AsyncReadExt, AsyncWriteExt, Future};
-#[cfg(all(feature = "tokio", not(feature = "futures")))]
-use std::future::Future;
-#[cfg(all(feature = "tokio", not(feature = "futures")))]
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::Mutex,
-};
-
-use super::AsyncIoError;
 
 #[derive(Debug)]
 pub struct CapTpSessionCore<Reader, Writer> {
@@ -29,7 +16,7 @@ impl<Reader, Writer> CapTpSessionCore<Reader, Writer> {
     }
 
     #[inline]
-    pub(crate) async fn recv(&self, buf: &mut [u8]) -> Result<usize, AsyncIoError>
+    pub(crate) async fn recv(&self, buf: &mut [u8]) -> Result<usize, std::io::Error>
     where
         Reader: AsyncRead + Unpin,
     {
@@ -48,14 +35,14 @@ impl<Reader, Writer> CapTpSessionCore<Reader, Writer> {
     // }
 
     #[inline]
-    pub(crate) async fn send_all(&self, buf: &[u8]) -> Result<(), AsyncIoError>
+    pub(crate) async fn send_all(&self, buf: &[u8]) -> Result<(), std::io::Error>
     where
         Writer: AsyncWrite + Unpin,
     {
         self.writer.lock().await.write_all(buf).await
     }
 
-    pub(crate) async fn send_msg<Msg: Serialize>(&self, msg: &Msg) -> Result<(), AsyncIoError>
+    pub(crate) async fn send_msg<Msg: Serialize>(&self, msg: &Msg) -> Result<(), std::io::Error>
     where
         Writer: AsyncWrite + Unpin,
     {
@@ -63,7 +50,7 @@ impl<Reader, Writer> CapTpSessionCore<Reader, Writer> {
         self.send_all(&syrup::ser::to_bytes(msg).unwrap()).await
     }
 
-    pub(crate) async fn flush(&self) -> Result<(), AsyncIoError>
+    pub(crate) async fn flush(&self) -> Result<(), std::io::Error>
     where
         Writer: AsyncWrite + Unpin,
     {
@@ -73,7 +60,7 @@ impl<Reader, Writer> CapTpSessionCore<Reader, Writer> {
     pub(crate) async fn recv_msg<'de, Msg: Deserialize<'de>>(
         &self,
         recv_buf: &'de mut [u8],
-    ) -> Result<Msg, AsyncIoError>
+    ) -> Result<Msg, std::io::Error>
     where
         Reader: AsyncRead + Unpin,
     {

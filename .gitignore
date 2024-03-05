@@ -1,2 +1,4 @@
 target/
 proptest-regressions
+rust-analyzer.json
+.config/nextest.toml

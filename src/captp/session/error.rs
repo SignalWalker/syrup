@@ -1,14 +1,11 @@
-use crate::{
-    async_compat::AsyncIoError,
-    captp::msg::{OpDeliver, OpDeliverOnly},
-};
+use crate::captp::msg::{OpDeliver, OpDeliverOnly};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RecvError {
     #[error("failed to parse syrup: {0:?}")]
     Parse(syrup::ErrorKind),
     #[error(transparent)]
-    Io(#[from] AsyncIoError),
+    Io(#[from] std::io::Error),
     #[error("received abort message from remote; reason: {0}")]
     SessionAborted(String),
     #[error("attempted recv on locally aborted session")]
@@ -26,7 +23,7 @@ impl<'input> From<syrup::Error<'input>> for RecvError {
 #[derive(Debug, thiserror::Error)]
 pub enum SendError {
     #[error(transparent)]
-    Io(#[from] AsyncIoError),
+    Io(#[from] std::io::Error),
     #[error("received abort message from remote; reason: {0}")]
     SessionAborted(String),
     #[error("attempted send on locally aborted session")]

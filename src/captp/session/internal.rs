@@ -1,5 +1,8 @@
 use super::{CapTpSessionCore, ExportToken, KeyMap, RecvError, SendError, SwissRegistry};
-use crate::async_compat::{AsyncIoError, AsyncRead, AsyncWrite};
+use crate::{
+    async_compat::{AsyncRead, AsyncWrite},
+    captp::msg::Operation,
+};
 use dashmap::{DashMap, DashSet};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::lock::Mutex;
@@ -27,7 +30,7 @@ pub(crate) struct CapTpSessionInternal<Reader, Writer> {
     pub(super) aborted_locally: AtomicBool,
 }
 
-#[cfg(feature = "extra_diagnostics")]
+#[cfg(feature = "extra-diagnostics")]
 impl<Reader, Writer> Drop for CapTpSessionInternal<Reader, Writer> {
     fn drop(&mut self) {
         if !self.is_aborted() {
@@ -88,7 +91,7 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
     }
 
     #[tracing::instrument()]
-    async fn recv(&self, max_size: usize) -> Result<usize, AsyncIoError>
+    async fn recv(&self, max_size: usize) -> Result<usize, std::io::Error>
     where
         Reader: AsyncRead + Unpin,
     {
@@ -174,6 +177,120 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
         self.aborted_locally
             .load(std::sync::atomic::Ordering::Acquire)
             || self.aborted_by_remote.read().unwrap().is_some()
+    }
+
+    pub(super) async fn recv_event(self: &Arc<Self>) -> Result<super::Event, RecvError>
+    where
+        Reader: AsyncRead + Send + Unpin + 'static,
+        Writer: AsyncWrite + Send + Unpin + 'static,
+    {
+        fn bootstrap_deliver_only(args: Vec<syrup::Item>) -> super::Event {
+            use syrup::Item;
+            let mut args = args.into_iter();
+            match args.next() {
+                Some(Item::Symbol(ident)) => match ident.as_str() {
+                    "deposit-gift" => todo!("bootstrap: deposit-gift"),
+                    id => todo!("unrecognized bootstrap function: {id}"),
+                },
+                _ => todo!(),
+            }
+        }
+        fn bootstrap_deliver<Reader, Writer>(
+            session: Arc<CapTpSessionInternal<Reader, Writer>>,
+            args: Vec<syrup::Item>,
+            answer_pos: Option<u64>,
+            resolve_me_desc: crate::captp::msg::DescImport,
+        ) -> super::Event
+        where
+            Writer: AsyncWrite + Send + Unpin + 'static,
+            Reader: Send + 'static,
+        {
+            use syrup::Item;
+            let mut args = args.into_iter();
+            match args.next() {
+                Some(Item::Symbol(ident)) => match ident.as_str() {
+                    "fetch" => {
+                        let swiss = match args.next() {
+                            Some(Item::Bytes(swiss)) => swiss,
+                            Some(s) => todo!("malformed swiss num: {s:?}"),
+                            None => todo!("missing swiss num"),
+                        };
+                        super::Event::Bootstrap(crate::captp::BootstrapEvent::Fetch {
+                            resolver: crate::captp::GenericResolver::new(
+                                session,
+                                answer_pos,
+                                resolve_me_desc,
+                            )
+                            .into(),
+                            swiss,
+                        })
+                    }
+                    "withdraw-gift" => todo!("bootstrap: withdraw-gift"),
+                    id => todo!("unrecognized bootstrap function: {id}"),
+                },
+                _ => todo!(),
+            }
+        }
+        loop {
+            tracing::trace!("awaiting message");
+            let msg = self
+                .recv_msg::<crate::captp::msg::Operation<syrup::Item>>()
+                .await?;
+            tracing::debug!(?msg, "received message");
+            match msg {
+                Operation::DeliverOnly(del) => match del.to_desc.position {
+                    0 => break Ok(bootstrap_deliver_only(del.args)),
+                    pos => {
+                        // let del = Delivery::DeliverOnly {
+                        //     to_desc: del.to_desc,
+                        //     args: del.args,
+                        // };
+                        // break Ok(Event::Delivery(del));
+                        match self.exports.get(&pos) {
+                            Some(obj) => obj.deliver_only(del.args),
+                            None => break Err(RecvError::UnknownTarget(pos, del.args)),
+                        }
+                    }
+                },
+                Operation::Deliver(del) => match del.to_desc.position {
+                    0 => {
+                        break Ok(bootstrap_deliver(
+                            self.clone(),
+                            del.args,
+                            del.answer_pos,
+                            del.resolve_me_desc,
+                        ))
+                    }
+                    pos => {
+                        // let del = Delivery::Deliver {
+                        //     to_desc: del.to_desc,
+                        //     args: del.args,
+                        //     resolver: GenericResolver {
+                        //         session: self.clone(),
+                        //         answer_pos: del.answer_pos,
+                        //         resolve_me_desc: del.resolve_me_desc,
+                        //     },
+                        // };
+                        // break Ok(Event::Delivery(del));
+                        match self.exports.get(&pos) {
+                            Some(obj) => obj.deliver(
+                                del.args,
+                                crate::captp::GenericResolver::new(
+                                    self.clone(),
+                                    del.answer_pos,
+                                    del.resolve_me_desc,
+                                ),
+                            ),
+                            None => break Err(RecvError::UnknownTarget(pos, del.args)),
+                        }
+                    }
+                },
+                Operation::Abort(crate::captp::msg::OpAbort { reason }) => {
+                    self.set_remote_abort(reason.clone());
+                    break Ok(super::Event::Abort(reason));
+                }
+            }
+        }
     }
 
     // fn gen_export(self: Arc<Self>) -> ObjectInbox<Socket> {
