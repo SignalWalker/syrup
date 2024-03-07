@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::{AbstractCapTpSession, CapTpSession, SendError};
+use super::{AbstractCapTpSession, CapTpDeliver, CapTpSession, SendError};
 use crate::async_compat::AsyncWrite;
 use crate::captp::msg::{DescImport, DescImportObject};
 use futures::FutureExt;
@@ -8,7 +8,7 @@ use syrup::Serialize;
 
 #[must_use]
 pub struct GenericResolver {
-    session: std::sync::Arc<dyn AbstractCapTpSession + Send + Sync>,
+    session: std::sync::Arc<dyn CapTpDeliver + Send + Sync>,
     answer_pos: Option<u64>,
     resolve_me_desc: DescImport,
 }
@@ -35,7 +35,7 @@ impl std::clone::Clone for GenericResolver {
 
 impl GenericResolver {
     pub(super) fn new(
-        session: Arc<dyn AbstractCapTpSession + Send + Sync>,
+        session: Arc<dyn CapTpDeliver + Send + Sync>,
         answer_pos: Option<u64>,
         resolve_me_desc: DescImport,
     ) -> Self {

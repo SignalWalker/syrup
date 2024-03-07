@@ -5,8 +5,8 @@ pub use de::Deserialize;
 pub mod ser;
 pub use ser::Serialize;
 
-#[cfg(feature = "serde")]
-pub mod serde;
+// #[cfg(feature = "serde")]
+// pub mod serde;
 
 pub mod extra;
 

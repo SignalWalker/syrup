@@ -61,6 +61,8 @@ impl RawSyrup {
         Self::try_from_serialize(s).unwrap()
     }
 
+    /// # Safety
+    /// - Input data must be valid Syrup.
     pub unsafe fn from_raw(data: Vec<u8>) -> Self {
         Self { data }
     }
@@ -74,10 +76,10 @@ impl Serialize for RawSyrup {
 
 #[macro_export]
 macro_rules! raw_syrup {
-    [$($item:expr),+ $(,)?] => {
+    [$($item:expr),* $(,)?] => {
         vec![$($crate::RawSyrup::try_from_serialize($item)?),+]
     };
-    [$($item:expr),+ $(,)?; $iter:expr] => {
+    [$($item:expr),* $(,)?; $iter:expr] => {
         {
             let mut __res = $crate::raw_syrup![$($item),+];
             __res.extend($iter.into_iter().map($crate::RawSyrup::from_serialize));
@@ -88,12 +90,12 @@ macro_rules! raw_syrup {
 
 #[macro_export]
 macro_rules! raw_syrup_unwrap {
-    [$($item:expr),+ $(,)?] => {
-        vec![$($crate::RawSyrup::try_from_serialize($item).unwrap()),+]
+    [$($item:expr),* $(,)?] => {
+        vec![$($crate::RawSyrup::try_from_serialize($item).unwrap()),*]
     };
-    [$($item:expr),+ $(,)?; $iter:expr] => {
+    [$($item:expr),* $(,)?; $iter:expr] => {
         {
-            let mut __res = $crate::raw_syrup_unwrap![$($item),+];
+            let mut __res = $crate::raw_syrup_unwrap![$($item),*];
             __res.extend($iter.into_iter().map($crate::RawSyrup::from_serialize));
             __res
         }
@@ -185,7 +187,7 @@ impl<const LEN: usize> From<Bytes<[u8; LEN]>> for [u8; LEN] {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Item {
     Bool(bool),
     F32(f32),
@@ -219,25 +221,25 @@ impl std::fmt::Debug for Item {
 }
 
 pub trait FromSyrupItem: Sized {
-    fn from_syrup_item(item: Item) -> Option<Self>;
+    fn from_syrup_item(item: Item) -> Result<Self, Item>;
 }
 
-pub trait IntoSyrupItem {
-    fn into_syrup_item(&self) -> Option<Item>;
+pub trait AsSyrupItem {
+    fn as_syrup_item(&self) -> Option<Item>;
 }
 
 impl<T> FromSyrupItem for T
 where
     for<'de> T: Deserialize<'de>,
 {
-    fn from_syrup_item(item: Item) -> Option<Self> {
+    fn from_syrup_item(item: Item) -> Result<Self, Item> {
         let serialized = crate::ser::to_bytes(&item).unwrap();
-        crate::de::from_bytes(&serialized).ok()
+        crate::de::from_bytes(&serialized).map_err(|_| item)
     }
 }
 
-impl<T: Serialize> IntoSyrupItem for T {
-    fn into_syrup_item(&self) -> Option<Item> {
+impl<T: Serialize> AsSyrupItem for T {
+    fn as_syrup_item(&self) -> Option<Item> {
         let serialized = crate::ser::to_bytes(self).unwrap();
         crate::de::from_bytes(&serialized).ok()
     }

@@ -1,11 +1,15 @@
-use super::{CapTpSessionInternal, Event, RecvError, SendError};
+use super::{CapTpSession, CapTpSessionInternal, Event, RecvError, SendError};
 use crate::async_compat::{AsyncRead, AsyncWrite};
-use crate::captp::msg::{OpDeliver, OpDeliverOnly};
-use crate::captp::object::Resolver;
+use crate::captp::msg::{OpAbort, OpDeliver, OpDeliverOnly};
+use crate::captp::object::{RemoteBootstrap, Resolver};
 use crate::captp::{msg::DescImport, object::Answer};
+use ed25519_dalek::{SigningKey, VerifyingKey};
+use futures::future::BoxFuture;
 use futures::FutureExt;
+use std::future::Future;
+use std::sync::Arc;
 
-pub(crate) trait AbstractCapTpSession {
+pub(crate) trait CapTpDeliver {
     fn deliver_only<'f>(
         &'f self,
         position: u64,
@@ -25,19 +29,29 @@ pub(crate) trait AbstractCapTpSession {
     ) -> futures::future::BoxFuture<'f, Result<Answer, SendError>>;
 }
 
-impl<Reader: Send, Writer: AsyncWrite + Unpin + Send> AbstractCapTpSession
-    for CapTpSessionInternal<Reader, Writer>
+/// Allows dynamic dispatch for CapTpSessions.
+pub trait AbstractCapTpSession {
+    fn signing_key(&self) -> &SigningKey;
+    fn remote_vkey(&self) -> &VerifyingKey;
+    fn export(&self, obj: Arc<dyn crate::captp::object::Object + Send + Sync>) -> u64;
+    fn is_aborted(&self) -> bool;
+    fn abort<'s>(&'s self, reason: String) -> BoxFuture<'s, Result<(), SendError>>;
+    fn recv_event<'s>(self: Arc<Self>) -> BoxFuture<'s, Result<Event, RecvError>>;
+    fn into_remote_bootstrap(self: Arc<Self>) -> RemoteBootstrap;
+}
+
+impl<Reader, Writer> CapTpDeliver for CapTpSessionInternal<Reader, Writer>
+where
+    Reader: Send,
+    Writer: AsyncWrite + Send + Unpin,
 {
     fn deliver_only<'f>(
         &'f self,
         position: u64,
         args: Vec<syrup::RawSyrup>,
     ) -> futures::future::BoxFuture<'f, Result<(), SendError>> {
-        async move {
-            let del = OpDeliverOnly::new(position, args);
-            self.send_msg(&del).await
-        }
-        .boxed()
+        let del = OpDeliverOnly::new(position, args);
+        async move { self.send_msg(&del).await }.boxed()
     }
 
     fn deliver<'f>(
@@ -47,11 +61,8 @@ impl<Reader: Send, Writer: AsyncWrite + Unpin + Send> AbstractCapTpSession
         answer_pos: Option<u64>,
         resolve_me_desc: DescImport,
     ) -> futures::future::BoxFuture<'f, Result<(), SendError>> {
-        async move {
-            let del = OpDeliver::new(position, args, answer_pos, resolve_me_desc);
-            self.send_msg(&del).await
-        }
-        .boxed()
+        let del = OpDeliver::new(position, args, answer_pos, resolve_me_desc);
+        async move { self.send_msg(&del).await }.boxed()
     }
 
     fn deliver_and<'f>(
@@ -67,5 +78,44 @@ impl<Reader: Send, Writer: AsyncWrite + Unpin + Send> AbstractCapTpSession
             Ok(answer)
         }
         .boxed()
+    }
+}
+
+impl<Reader, Writer> AbstractCapTpSession for CapTpSessionInternal<Reader, Writer>
+where
+    Reader: AsyncRead + Send + Unpin + 'static,
+    Writer: AsyncWrite + Send + Unpin + 'static,
+{
+    fn signing_key(&self) -> &SigningKey {
+        &self.signing_key
+    }
+
+    fn remote_vkey(&self) -> &VerifyingKey {
+        &self.remote_vkey
+    }
+
+    fn export(&self, obj: Arc<dyn crate::captp::object::Object + Send + Sync>) -> u64 {
+        self.export(obj)
+    }
+
+    fn is_aborted(&self) -> bool {
+        self.is_aborted()
+    }
+
+    fn abort<'s>(&'s self, reason: String) -> BoxFuture<'s, Result<(), SendError>> {
+        async move {
+            let res = self.send_msg(&OpAbort::from(reason)).await;
+            self.local_abort();
+            res
+        }
+        .boxed()
+    }
+
+    fn recv_event<'s>(self: Arc<Self>) -> BoxFuture<'s, Result<Event, RecvError>> {
+        CapTpSessionInternal::recv_event(self).boxed()
+    }
+
+    fn into_remote_bootstrap(self: Arc<Self>) -> RemoteBootstrap {
+        RemoteBootstrap::new(self)
     }
 }

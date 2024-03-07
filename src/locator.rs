@@ -7,25 +7,32 @@ use syrup::{Deserialize, Serialize};
 #[cfg(feature = "netlayer-onion")]
 mod onion;
 
+/// An identifier for a single OCapN node.
+///
+/// From the [draft specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Locators.md):
+/// > This identifies an OCapN node, not a specific object. This includes enough information to specify which netlayer and provide that netlayer with all of the information needed to create a bidirectional channel to that node.
 #[derive(Clone, Deserialize, Serialize)]
 #[syrup(name = "ocapn-node",
         deserialize_bound = HintKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; HintValue: Deserialize<'__de>
         )]
 pub struct NodeLocator<HintKey, HintValue> {
+    /// Distinguishes the target node from other nodes accessible through the netlayer specified by
+    /// the transport key.
     pub designator: String,
+    /// Specifies the netlayer that should be used to access the target node.
     #[syrup(as_symbol)]
     pub transport: String,
+    /// Additional connection information.
     #[syrup(with = syrup::optional_map)]
     pub hints: HashMap<HintKey, HintValue>,
 }
 
-impl<HKey: std::fmt::Debug, HVal: std::fmt::Debug> std::fmt::Debug for NodeLocator<HKey, HVal> {
+impl<HKey, HVal> std::fmt::Debug for NodeLocator<HKey, HVal>
+where
+    Self: syrup::Serialize,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "<ocapn-node {} {} {:?}>",
-            self.designator, self.transport, self.hints
-        )
+        f.write_str(&syrup::ser::to_pretty(self).unwrap())
     }
 }
 
@@ -37,6 +44,7 @@ impl<HKey: std::fmt::Display, HVal: std::fmt::Display> std::fmt::Display
         if !self.hints.is_empty() {
             let mut entries = self.hints.iter();
             let (k, v) = entries.next().unwrap();
+            // TODO :: escape characters for URI
             write!(f, "?{k}={v}")?;
             for (k, v) in entries {
                 write!(f, "{k}={v}")?;
@@ -62,15 +70,24 @@ impl<HKey, HVal> NodeLocator<HKey, HVal> {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+/// A unique identifier for
+#[derive(Clone, Deserialize, Serialize)]
 #[syrup(name = "ocapn-sturdyref",
-            deserialize_bound = HintKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; HintValue: Deserialize<'__de>
-
+    deserialize_bound = HintKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; HintValue: Deserialize<'__de>
 )]
 pub struct SturdyRefLocator<HintKey, HintValue> {
     pub node_locator: NodeLocator<HintKey, HintValue>,
     #[syrup(with = syrup::bytes::vec)]
     pub swiss_num: Vec<u8>,
+}
+
+impl<HKey, HVal> std::fmt::Debug for SturdyRefLocator<HKey, HVal>
+where
+    Self: syrup::Serialize,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&syrup::ser::to_pretty(self).unwrap())
+    }
 }
 
 impl<HKey, HVal> PartialEq for SturdyRefLocator<HKey, HVal> {

@@ -12,6 +12,7 @@ A library implementing [OCapN](https://github.com/ocapn/ocapn).
 ## Progress
 
 - [ ] Async runtime agnostic
+- [ ] Test with [ocapn-test-suite](https://github.com/ocapn/ocapn-test-suite) (partially working; requires OnionNetlayer to work)
 - Syrup:
   - [ ] `#[derive(Serialize, Deserialize)]` (partial; missing enums, some other features)
   - [ ] Design better way of handling enums
@@ -39,7 +40,7 @@ A library implementing [OCapN](https://github.com/ocapn/ocapn).
     - [x] `fulfill`
     - [x] `break`
 - Netlayers:
-  - [ ] Tor Netlayer (was waiting on [arti](https://gitlab.torproject.org/tpo/core/arti) to implement onion services)
+  - [ ] Onion Netlayer ([arti](https://gitlab.torproject.org/tpo/core/arti)'s onion service support is shaky right now)
   - [ ] Manage multiple transport types using some sort of netlayer manager struct?
 - Locators:
   - [ ] Deserialize from URI

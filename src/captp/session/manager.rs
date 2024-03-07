@@ -38,7 +38,7 @@ impl<Reader, Writer> CapTpSessionManager<Reader, Writer> {
         CapTpSessionBuilder::new(self, reader, writer)
     }
 
-    pub(crate) fn finalize_session<HKey, HVal>(
+    pub(super) fn finalize_session<HKey, HVal>(
         &mut self,
         core: CapTpSessionCore<Reader, Writer>,
         signing_key: SigningKey,

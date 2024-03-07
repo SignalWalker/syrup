@@ -1,60 +1,59 @@
-use super::{Answer, ObjectInbox, RemoteObject};
+use super::{ObjectInbox, RemoteObject};
 use crate::async_compat::AsyncWrite;
+use crate::captp::CapTpDeliver;
 use crate::captp::{
     msg::{DescHandoffReceive, DescImport},
     SendError,
 };
-use std::{any::Any, sync::Arc};
+use std::sync::Arc;
 use syrup::Serialize;
 
-pub struct RemoteBootstrap<Reader, Writer> {
-    base: RemoteObject<Reader, Writer>,
+pub struct RemoteBootstrap {
+    base: RemoteObject,
 }
 
-impl<Reader, Writer> RemoteBootstrap<Reader, Writer> {
-    pub(crate) fn new(session: crate::captp::CapTpSession<Reader, Writer>) -> Self {
+impl RemoteBootstrap {
+    pub(crate) fn new(session: Arc<dyn CapTpDeliver + Send + Sync + 'static>) -> Self {
         Self {
             base: RemoteObject::new(session, 0),
         }
     }
 }
 
-impl<Reader, Writer> RemoteBootstrap<Reader, Writer> {
+impl RemoteBootstrap {
     pub async fn fetch(
         &self,
         swiss_number: &[u8],
         // answer_pos: Option<u64>,
         // resolve_me_desc: DescImport,
-    ) -> Result<impl std::future::Future<Output = Result<u64, syrup::Item>>, SendError>
-    where
-        Writer: AsyncWrite + Unpin,
+    ) -> Result<impl std::future::Future<Output = Result<RemoteObject, syrup::Item>>, SendError>
     {
         use futures::FutureExt;
         let swiss_hash = crate::hash(&swiss_number);
         tracing::trace!(%swiss_hash, "fetching object");
+        let session = self.base.session.clone();
         Ok(self
             .base
             .call_and("fetch", &[syrup::Bytes(swiss_number)])
             .await?
-            .map(|res| match res {
-                Ok(res) => res.map(|args| {
-                    let mut args = args.into_iter();
-                    match args.next() {
-                        Some(i) => match <u64 as syrup::FromSyrupItem>::from_syrup_item(i) {
-                            Some(pos) => pos,
+            .map(move |res| -> Result<RemoteObject, syrup::Item> {
+                match res {
+                    Ok(res) => {
+                        let mut args = res?.into_iter();
+                        match args.next() {
+                            Some(i) => Ok(RemoteObject {
+                                position: <u64 as syrup::FromSyrupItem>::from_syrup_item(i)?,
+                                session,
+                            }),
                             None => todo!(),
-                        },
-                        None => todo!(),
+                        }
                     }
-                }),
-                Err(_) => todo!("canceled answer"),
+                    Err(_) => todo!("canceled answer"),
+                }
             }))
     }
 
-    pub async fn deposit_gift(&self, gift_id: u64, desc: DescImport) -> Result<(), SendError>
-    where
-        Writer: AsyncWrite + Unpin,
-    {
+    pub async fn deposit_gift(&self, gift_id: u64, desc: DescImport) -> Result<(), SendError> {
         self.base
             .call_only("deposit_gift", &syrup::raw_syrup_unwrap![&gift_id, &desc])
             .await
@@ -67,7 +66,6 @@ impl<Reader, Writer> RemoteBootstrap<Reader, Writer> {
         resolve_me_desc: DescImport,
     ) -> Result<(), SendError>
     where
-        Writer: AsyncWrite + Unpin,
         DescHandoffReceive<HKey, HVal>: Serialize,
     {
         self.base

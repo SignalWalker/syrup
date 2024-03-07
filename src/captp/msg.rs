@@ -145,7 +145,10 @@ mod deliver {
         pub args: Vec<Arg>,
     }
 
-    impl<Arg: syrup::Serialize> std::fmt::Debug for OpDeliverOnly<Arg> {
+    impl<Arg> std::fmt::Debug for OpDeliverOnly<Arg>
+    where
+        Self: Serialize,
+    {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str(&syrup::ser::to_pretty(self).unwrap())
         }
@@ -181,7 +184,10 @@ mod deliver {
         pub resolve_me_desc: DescImport,
     }
 
-    impl<Arg: syrup::Serialize> std::fmt::Debug for OpDeliver<Arg> {
+    impl<Arg> std::fmt::Debug for OpDeliver<Arg>
+    where
+        Self: Serialize,
+    {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str(&syrup::ser::to_pretty(self).unwrap())
         }
@@ -229,7 +235,7 @@ mod handoff {
     use crate::locator::NodeLocator;
     use syrup::{Deserialize, Serialize};
 
-    #[derive(Debug, Clone, Deserialize, Serialize)]
+    #[derive(Clone, Deserialize, Serialize)]
     #[syrup(name = "desc:handoff-give", deserialize_bound = HKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; HVal: Deserialize<'__de>)]
     pub struct DescHandoffGive<HKey, HVal> {
         pub receiver_key: PublicKey,
@@ -242,7 +248,16 @@ mod handoff {
         pub gift_id: Vec<u8>,
     }
 
-    #[derive(Debug, Clone, Deserialize, Serialize)]
+    impl<HKey, HVal> std::fmt::Debug for DescHandoffGive<HKey, HVal>
+    where
+        Self: syrup::Serialize,
+    {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&syrup::ser::to_pretty(self).unwrap())
+        }
+    }
+
+    #[derive(Clone, Deserialize, Serialize)]
     #[syrup(name = "desc:handoff-receive", deserialize_bound = HKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; HVal: Deserialize<'__de>)]
     pub struct DescHandoffReceive<HKey, HVal> {
         #[syrup(with = syrup::bytes::vec)]
@@ -252,11 +267,21 @@ mod handoff {
         pub handoff_count: u64,
         pub signed_give: DescHandoffGive<HKey, HVal>,
     }
+
+    impl<HKey, HVal> std::fmt::Debug for DescHandoffReceive<HKey, HVal>
+    where
+        Self: syrup::Serialize,
+    {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&syrup::ser::to_pretty(self).unwrap())
+        }
+    }
 }
 pub use handoff::*;
 
+/// Used for [CapTpSession::recv_event](crate::captp::session::CapTpSession::recv_event).
 #[derive(Clone)]
-pub enum Operation<Inner> {
+pub(super) enum Operation<Inner> {
     DeliverOnly(OpDeliverOnly<Inner>),
     Deliver(OpDeliver<Inner>),
     // Pick(OpPick),
@@ -266,7 +291,12 @@ pub enum Operation<Inner> {
     // GcAnswer(OpGcAnswer),
 }
 
-impl<Inner: syrup::Serialize> std::fmt::Debug for Operation<Inner> {
+impl<Inner> std::fmt::Debug for Operation<Inner>
+where
+    OpDeliverOnly<Inner>: Serialize,
+    OpDeliver<Inner>: Serialize,
+    OpAbort: Serialize,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DeliverOnly(d) => d.fmt(f),
@@ -276,6 +306,7 @@ impl<Inner: syrup::Serialize> std::fmt::Debug for Operation<Inner> {
     }
 }
 
+// TODO :: improve syrup lib's handling of enums
 impl<'de, Inner: syrup::Deserialize<'de>> syrup::Deserialize<'de> for Operation<Inner> {
     fn deserialize<D: syrup::de::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         struct __Visitor<Inner>(std::marker::PhantomData<Inner>);

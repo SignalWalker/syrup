@@ -33,5 +33,5 @@ lazy_static = { version = "^1.4" }
 [features]
 default = ["extra-ed25519"]
 async-stream = ["dep:futures"]
-serde = ["dep:serde"]
+# serde = ["dep:serde"]
 extra-ed25519 = ["dep:ed25519-dalek"]

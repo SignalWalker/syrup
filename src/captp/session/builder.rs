@@ -1,14 +1,13 @@
 use super::CapTpSession;
 use crate::{
     async_compat::{AsyncRead, AsyncWrite},
-    captp::{msg::OpStartSession, session::CapTpSessionManager, CapTpSessionCore},
+    captp::{msg::OpStartSession, session::CapTpSessionCore, session::CapTpSessionManager},
     locator::NodeLocator,
     CAPTP_VERSION,
 };
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
 use std::future::Future;
-use std::sync::Arc;
 use syrup::{Deserialize, Serialize};
 
 pub struct CapTpSessionBuilder<'manager, Reader, Writer> {
@@ -123,7 +122,7 @@ impl<'m, Reader, Writer> CapTpSessionBuilder<'m, Reader, Writer> {
         )
     }
 
-    pub(crate) async fn recv_start_session<HKey, HVal>(
+    pub(super) async fn recv_start_session<HKey, HVal>(
         core: &CapTpSessionCore<Reader, Writer>,
     ) -> Result<(VerifyingKey, NodeLocator<HKey, HVal>), std::io::Error>
     where

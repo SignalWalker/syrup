@@ -123,8 +123,8 @@ checksum = "96d30a06541fbafbc7f82ed10c06164cfbd2c401138f6addd8404629c4b16711"
 
 [[package]]
 name = "arti-client"
-version = "0.14.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.14.1"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "cfg-if",
  "derive_builder_fork_arti",
@@ -351,9 +351,9 @@ checksum = "2225b558afc76c596898f5f1b3fc35cfce0eb1b13635cbd7d1b2a7177dc10ccd"
 
 [[package]]
 name = "bumpalo"
-version = "3.15.3"
+version = "3.15.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ea184aa71bb362a1157c896979544cc23974e08fd265f29ea96b59f0b4a555b"
+checksum = "7ff69b9dd49fd426c69a0db9fc04dd934cdb6645ff000864d98f7e2af8830eaa"
 
 [[package]]
 name = "by_address"
@@ -376,14 +376,15 @@ checksum = "a2bd12c1caf447e69cd4528f47f94d203fd2582878ecb9e9465484c4148a8223"
 [[package]]
 name = "caret"
 version = "0.4.4"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 
 [[package]]
 name = "cc"
-version = "1.0.88"
+version = "1.0.90"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02f341c093d19155a6e41631ce5971aac4e9a868262212153124c15fa22d1cdc"
+checksum = "8cd6604a82acf3039f1144f54b8eb34e91ffba622051189e71b781822d5ee1f5"
 dependencies = [
+ "jobserver",
  "libc",
 ]
 
@@ -395,9 +396,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chrono"
-version = "0.4.34"
+version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bc015644b92d5890fab7489e49d21f879d5c990186827d42ec511919404f38b"
+checksum = "8eaf5903dcbc0a39312feb77df2ff4c76387d591b9fc7b04a238dcf8bb62639a"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
@@ -1095,8 +1096,8 @@ dependencies = [
 
 [[package]]
 name = "fs-mistrust"
-version = "0.7.7"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.7.8"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "derive_builder_fork_arti",
  "dirs",
@@ -1131,8 +1132,8 @@ dependencies = [
 
 [[package]]
 name = "fslock-guard"
-version = "0.1.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.1.1"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "fslock-arti-fork",
  "thiserror",
@@ -1362,9 +1363,9 @@ checksum = "f558a64ac9af88b5ba400d99b579451af0d39c6d360980045b91aac966d705e2"
 
 [[package]]
 name = "http"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b32afd38673a8016f7c9ae69e5af41a58f81b1d31689040f2f1959594ce194ea"
+checksum = "21b9ddb458710bc376481b842f5da65cdf31522de232c1ca8146abce2a358258"
 dependencies = [
  "bytes",
  "fnv",
@@ -1511,10 +1512,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1a46d1a171d865aa5f83f92695765caa047a9b4cbae2cbf37dbd613a793fd4c"
 
 [[package]]
-name = "js-sys"
-version = "0.3.68"
+name = "jobserver"
+version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "406cda4b368d531c842222cf9d2600a9a4acce8d29423695379c6868a143a9ee"
+checksum = "ab46a6e9526ddef3ae7f787c06f0f2600639ba80ea3eade3d8e670a2230f51d6"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "js-sys"
+version = "0.3.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29c15563dc2726973df627357ce0c9ddddbea194836909d655df6a75d2cf296d"
 dependencies = [
  "wasm-bindgen",
 ]
@@ -2035,18 +2045,18 @@ dependencies = [
 
 [[package]]
 name = "pin-project"
-version = "1.1.4"
+version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0302c4a0442c456bd56f841aee5c3bfd17967563f6fadc9ceb9f9c23cf3807e0"
+checksum = "b6bf43b791c5b9e34c3d182969b4abb522f9343702850a2e57f460d00d09b4b3"
 dependencies = [
  "pin-project-internal",
 ]
 
 [[package]]
 name = "pin-project-internal"
-version = "1.1.4"
+version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "266c042b60c9c76b8d53061e52b2e0d1116abc57cefc8c5cd671619a56ac3690"
+checksum = "2f38a4412a78282e09a2cf38d195ea5420d15ba0602cb375210efbc877243965"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2301,7 +2311,7 @@ checksum = "b62dbe01f0b06f9d8dc7d49e05a0785f153b00b2c227856282f671e0318c9b15"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-automata 0.4.5",
+ "regex-automata 0.4.6",
  "regex-syntax 0.8.2",
 ]
 
@@ -2316,9 +2326,9 @@ dependencies = [
 
 [[package]]
 name = "regex-automata"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bb987efffd3c6d0d8f5f89510bb458559eab11e4f869acb20bf845e016259cd"
+checksum = "86b83b8b9847f9bf95ef68afb0b8e6cdb80f498442f5179a29fad448fcc1eaea"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -2340,7 +2350,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 [[package]]
 name = "retry-error"
 version = "0.5.1"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 
 [[package]]
 name = "rexa"
@@ -2467,7 +2477,7 @@ checksum = "e86697c916019a8588c99b5fac3cead74ec0b4b819707a682fd4d23fa0ce1ba1"
 [[package]]
 name = "safelog"
 version = "0.3.5"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "derive_more",
  "educe",
@@ -3163,7 +3173,7 @@ dependencies = [
 [[package]]
 name = "tor-async-utils"
 version = "0.1.5"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "futures",
  "pin-project",
@@ -3175,7 +3185,7 @@ dependencies = [
 [[package]]
 name = "tor-basic-utils"
 version = "0.8.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "hex",
  "libc",
@@ -3189,7 +3199,7 @@ dependencies = [
 [[package]]
 name = "tor-bytes"
 version = "0.10.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "bytes",
  "digest",
@@ -3203,8 +3213,8 @@ dependencies = [
 
 [[package]]
 name = "tor-cell"
-version = "0.16.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.16.1"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "bitflags 2.4.2",
  "bytes",
@@ -3226,8 +3236,8 @@ dependencies = [
 
 [[package]]
 name = "tor-cert"
-version = "0.10.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.11.0"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "caret",
  "derive_builder_fork_arti",
@@ -3241,8 +3251,8 @@ dependencies = [
 
 [[package]]
 name = "tor-chanmgr"
-version = "0.14.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.14.1"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "async-trait",
  "derive_builder_fork_arti",
@@ -3272,8 +3282,8 @@ dependencies = [
 
 [[package]]
 name = "tor-checkable"
-version = "0.7.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.8.0"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "humantime",
  "signature",
@@ -3283,8 +3293,8 @@ dependencies = [
 
 [[package]]
 name = "tor-circmgr"
-version = "0.15.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.16.0"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "amplify",
  "async-trait",
@@ -3326,8 +3336,8 @@ dependencies = [
 
 [[package]]
 name = "tor-config"
-version = "0.10.1"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.11.0"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "config",
  "derive-adhoc 0.8.2",
@@ -3356,7 +3366,7 @@ dependencies = [
 [[package]]
 name = "tor-consdiff"
 version = "0.7.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "digest",
  "hex",
@@ -3366,8 +3376,8 @@ dependencies = [
 
 [[package]]
 name = "tor-dirclient"
-version = "0.13.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.14.0"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "async-compression",
  "base64ct",
@@ -3393,8 +3403,8 @@ dependencies = [
 
 [[package]]
 name = "tor-dirmgr"
-version = "0.15.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.16.0"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "async-trait",
  "base64ct",
@@ -3445,7 +3455,7 @@ dependencies = [
 [[package]]
 name = "tor-error"
 version = "0.6.1"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "backtrace",
  "derive_more",
@@ -3461,8 +3471,8 @@ dependencies = [
 
 [[package]]
 name = "tor-guardmgr"
-version = "0.14.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.14.1"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "base64ct",
  "derive_builder_fork_arti",
@@ -3498,8 +3508,8 @@ dependencies = [
 
 [[package]]
 name = "tor-hsclient"
-version = "0.9.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.10.0"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "async-trait",
  "derive-adhoc 0.8.2",
@@ -3539,8 +3549,8 @@ dependencies = [
 
 [[package]]
 name = "tor-hscrypto"
-version = "0.6.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.6.1"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "cipher",
  "data-encoding",
@@ -3565,8 +3575,8 @@ dependencies = [
 
 [[package]]
 name = "tor-hsservice"
-version = "0.7.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.8.0"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "amplify",
  "async-trait",
@@ -3620,8 +3630,8 @@ dependencies = [
 
 [[package]]
 name = "tor-keymgr"
-version = "0.7.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.8.0"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "amplify",
  "arrayvec",
@@ -3640,6 +3650,7 @@ dependencies = [
  "serde",
  "ssh-key",
  "thiserror",
+ "tor-basic-utils",
  "tor-config",
  "tor-error",
  "tor-hscrypto",
@@ -3651,8 +3662,8 @@ dependencies = [
 
 [[package]]
 name = "tor-linkspec"
-version = "0.11.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.11.1"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "base64ct",
  "by_address",
@@ -3678,7 +3689,7 @@ dependencies = [
 [[package]]
 name = "tor-llcrypto"
 version = "0.7.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "aes",
  "base64ct",
@@ -3708,7 +3719,7 @@ dependencies = [
 [[package]]
 name = "tor-log-ratelim"
 version = "0.3.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "futures",
  "humantime",
@@ -3722,8 +3733,8 @@ dependencies = [
 
 [[package]]
 name = "tor-netdir"
-version = "0.12.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.12.1"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "bitflags 2.4.2",
  "derive_builder_fork_arti",
@@ -3756,8 +3767,8 @@ dependencies = [
 
 [[package]]
 name = "tor-netdoc"
-version = "0.12.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.12.1"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "amplify",
  "base64ct",
@@ -3798,8 +3809,8 @@ dependencies = [
 
 [[package]]
 name = "tor-persist"
-version = "0.10.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.10.1"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "amplify",
  "derive-adhoc 0.8.2",
@@ -3814,14 +3825,15 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "tor-basic-utils",
  "tor-error",
  "tracing",
 ]
 
 [[package]]
 name = "tor-proto"
-version = "0.16.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.16.1"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "asynchronous-codec",
  "bitvec",
@@ -3869,7 +3881,7 @@ dependencies = [
 [[package]]
 name = "tor-protover"
 version = "0.6.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "caret",
  "thiserror",
@@ -3878,7 +3890,7 @@ dependencies = [
 [[package]]
 name = "tor-rtcompat"
 version = "0.10.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "async-native-tls",
  "async-trait",
@@ -3895,7 +3907,7 @@ dependencies = [
 [[package]]
 name = "tor-rtmock"
 version = "0.13.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "amplify",
  "async-trait",
@@ -3922,7 +3934,7 @@ dependencies = [
 [[package]]
 name = "tor-socksproto"
 version = "0.10.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "caret",
  "subtle",
@@ -3933,8 +3945,8 @@ dependencies = [
 
 [[package]]
 name = "tor-units"
-version = "0.6.4"
-source = "git+https://gitlab.torproject.org/tpo/core/arti#848a9d53c84a89002cef9d4dce70520faf90b0a5"
+version = "0.6.5"
+source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9de2ffdd1800b9d8c1fa"
 dependencies = [
  "derive_more",
  "thiserror",
@@ -4160,9 +4172,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.91"
+version = "0.2.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1e124130aee3fb58c5bdd6b639a0509486b0338acaaae0c84a5124b0f588b7f"
+checksum = "4be2531df63900aeb2bca0daaaddec08491ee64ceecbee5076636a3b026795a8"
 dependencies = [
  "cfg-if",
  "wasm-bindgen-macro",
@@ -4170,9 +4182,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-backend"
-version = "0.2.91"
+version = "0.2.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9e7e1900c352b609c8488ad12639a311045f40a35491fb69ba8c12f758af70b"
+checksum = "614d787b966d3989fa7bb98a654e369c762374fd3213d212cfc0251257e747da"
 dependencies = [
  "bumpalo",
  "log",
@@ -4185,9 +4197,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.91"
+version = "0.2.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b30af9e2d358182b5c7449424f017eba305ed32a7010509ede96cdc4696c46ed"
+checksum = "a1f8823de937b71b9460c0c34e25f3da88250760bec0ebac694b49997550d726"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -4195,9 +4207,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.91"
+version = "0.2.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "642f325be6301eb8107a83d12a8ac6c1e1c54345a7ef1a9261962dfefda09e66"
+checksum = "e94f17b526d0a461a191c78ea52bbce64071ed5c04c9ffe424dcb38f74171bb7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4208,9 +4220,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.91"
+version = "0.2.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f186bd2dcf04330886ce82d6f33dd75a7bfcf69ecf5763b89fcde53b6ac9838"
+checksum = "af190c94f2773fdb3729c55b007a722abb5384da03bc0986df4c289bf5567e96"
 
 [[package]]
 name = "weak-table"

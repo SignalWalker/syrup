@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Ash Walker <ash@ashwalker.net>"]
 
+rust-version = "1.76" # TODO :: check whether rexa compiles with earlier versions of rust
+
 description = "An implementation of OCapN, a protocol for secure peer-to-peer networking."
 readme = true
 repository = "https://github.com/SignalWalker/rexa"
@@ -52,7 +54,7 @@ arti-client = { version = "^0.14", git = "https://gitlab.torproject.org/tpo/core
   "onion-service-service",
 ], optional = true }
 tor-rtcompat = { version = "^0.10", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
-tor-hsservice = { version = "^0.7", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
+tor-hsservice = { version = "^0.8", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
 tor-cell = { version = "^0.16", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
 tor-hscrypto = { version = "^0.6", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
 

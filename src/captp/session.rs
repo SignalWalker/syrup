@@ -88,6 +88,14 @@ impl<Reader, Writer> From<&'_ Arc<CapTpSessionInternal<Reader, Writer>>>
 }
 
 impl<Reader, Writer> CapTpSession<Reader, Writer> {
+    pub fn as_dyn(&self) -> Arc<dyn AbstractCapTpSession + Send + Sync + 'static>
+    where
+        Reader: AsyncRead + Send + Unpin + 'static,
+        Writer: AsyncWrite + Send + Unpin + 'static,
+    {
+        self.base.clone()
+    }
+
     pub fn signing_key(&self) -> &SigningKey {
         &self.base.signing_key
     }
@@ -113,16 +121,24 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
         res
     }
 
-    pub fn get_remote_object(self, position: u64) -> Option<RemoteObject<Reader, Writer>> {
+    pub fn get_remote_object(self, position: u64) -> Option<RemoteObject>
+    where
+        Reader: Send + 'static,
+        Writer: AsyncWrite + Send + Unpin + 'static,
+    {
         if position != 0 && !self.base.imports.contains(&position) {
             None
         } else {
-            Some(RemoteObject::new(self, position))
+            Some(RemoteObject::new(self.base.clone(), position))
         }
     }
 
-    pub fn get_remote_bootstrap(self) -> RemoteBootstrap<Reader, Writer> {
-        RemoteBootstrap::new(self)
+    pub fn get_remote_bootstrap(self) -> RemoteBootstrap
+    where
+        Reader: Send + 'static,
+        Writer: AsyncWrite + Send + Unpin + 'static,
+    {
+        RemoteBootstrap::new(self.base.clone())
     }
 
     // pub fn gen_export(&self) -> ObjectInbox<Socket> {
@@ -167,12 +183,12 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
         Reader: AsyncRead + Send + Unpin + 'static,
         Writer: AsyncWrite + Send + Unpin + 'static,
     {
-        self.base.recv_event().await
+        self.base.clone().recv_event().await
     }
 }
 
 impl<Reader, Writer> CapTpSession<Reader, Writer> {
-    pub async fn deliver_only<Arg: Serialize>(
+    pub(super) async fn deliver_only<Arg: Serialize>(
         &self,
         position: u64,
         args: Vec<Arg>,
@@ -183,7 +199,7 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
         self.send_msg(&OpDeliverOnly::new(position, args)).await
     }
 
-    pub async fn deliver<Arg: Serialize>(
+    pub(super) async fn deliver<Arg: Serialize>(
         &self,
         position: u64,
         args: Vec<Arg>,
@@ -197,7 +213,7 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
             .await
     }
 
-    pub async fn deliver_and<Arg: Serialize>(
+    pub(super) async fn deliver_and<Arg: Serialize>(
         &self,
         position: u64,
         args: Vec<Arg>,
@@ -212,7 +228,7 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
         Ok(answer)
     }
 
-    pub async fn recv_msg<Msg>(&self) -> Result<Msg, RecvError>
+    async fn recv_msg<Msg>(&self) -> Result<Msg, RecvError>
     where
         Reader: AsyncRead + Unpin,
         for<'de> Msg: Deserialize<'de>,
@@ -220,7 +236,7 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
         self.base.recv_msg::<Msg>().await
     }
 
-    pub async fn send_msg<Msg: Serialize>(&self, msg: &Msg) -> Result<(), SendError>
+    async fn send_msg<Msg: Serialize>(&self, msg: &Msg) -> Result<(), SendError>
     where
         Writer: AsyncWrite + Unpin,
     {

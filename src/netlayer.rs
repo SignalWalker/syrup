@@ -1,11 +1,11 @@
 //! - [Draft Specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Netlayers.md)
 
 use crate::{
-    captp::{CapTpSession, SwissRegistry},
+    captp::{AbstractCapTpSession, CapTpSession},
     locator::NodeLocator,
 };
-use std::future::Future;
-use std::sync::Arc;
+use futures::future::BoxFuture;
+use std::{future::Future, sync::Arc};
 use syrup::Serialize;
 
 #[cfg(feature = "netlayer-datastream")]
@@ -17,7 +17,7 @@ pub mod mock;
 #[cfg(feature = "netlayer-onion")]
 pub mod onion;
 
-pub trait Netlayer: Sized {
+pub trait Netlayer {
     type Reader;
     type Writer;
     type Error;
@@ -28,17 +28,25 @@ pub trait Netlayer: Sized {
         locator: &NodeLocator<HintKey, HintValue>,
     ) -> impl Future<Output = Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error>> + Send
     where
+        Self: Sized,
         NodeLocator<HintKey, HintValue>: Sync;
 
+    /// Accept a connection.
     fn accept(
         &self,
-    ) -> impl Future<Output = Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error>> + Send;
+    ) -> impl Future<Output = Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error>> + Send
+    where
+        Self: Sized;
 
+    /// Get a locator pointing to this node.
     fn locator<HintKey, HintValue>(&self) -> NodeLocator<HintKey, HintValue>;
 
+    /// Get a [Stream](futures::stream::Stream) of accepted connections.
     fn stream(
         &self,
     ) -> impl futures::stream::Stream<Item = Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error>>
+    where
+        Self: Sized,
     {
         futures::stream::unfold(self, |nl| async move { Some((nl.accept().await, nl)) })
     }

@@ -12,7 +12,8 @@ mod common;
 #[cfg(feature = "netlayer-mock")]
 test_nl!(nl::make_mock_netlayer => {
     op_start: op_start_mock,
-    op_abort: op_abort_mock
+    op_abort: op_abort_mock,
+    crossed_hellos: crossed_hellos_mock
 });
 
 #[cfg(feature = "netlayer-datastream")]
@@ -99,4 +100,31 @@ where
     }
 }
 
-// TODO :: crossed hellos
+fn crossed_hellos<Nl: Netlayer, F: NlFuture<Nl>>(
+    make_nl: impl Fn(&'static str, usize) -> F,
+) -> Result<(), BoxError>
+where
+    Nl: Send + 'static,
+    Nl::Reader: Send + 'static,
+    Nl::Writer: Send + 'static,
+    Nl::Error: std::error::Error + Send + Sync + 'static,
+{
+    match common::initialize(LogFormat::Pretty)?.block_on(async move {
+        let node_a = make_nl("crossed_hellos", 0).await?;
+        let node_b = make_nl("crossed_hellos", 1).await?;
+        let locator_a = node_a.locator::<String, String>();
+        let locator_b = node_a.locator::<String, String>();
+
+        tokio::spawn(async move { node_a.connect(&locator_b).await });
+        tokio::spawn(async move { node_b.connect(&locator_a).await });
+
+        Ok(())
+    }) {
+        Ok(res) => res,
+        Err(error) => {
+            tracing::error!(error, "failed");
+            return Err(error);
+        }
+    };
+    Ok(())
+}

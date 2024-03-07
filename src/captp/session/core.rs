@@ -2,7 +2,7 @@ use crate::async_compat::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Mu
 use syrup::{Deserialize, Serialize};
 
 #[derive(Debug)]
-pub struct CapTpSessionCore<Reader, Writer> {
+pub(super) struct CapTpSessionCore<Reader, Writer> {
     pub(crate) reader: Mutex<Reader>,
     pub(crate) writer: Mutex<Writer>,
 }

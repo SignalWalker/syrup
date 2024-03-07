@@ -1,7 +1,7 @@
 #[cfg(not(feature = "tokio"))]
 pub use futures::{
     channel::{mpsc, oneshot},
-    lock::{Mutex, RwLock},
+    lock::Mutex,
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
 };
 #[cfg(feature = "tokio")]

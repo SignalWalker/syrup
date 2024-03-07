@@ -1,7 +1,7 @@
 use super::{CapTpSessionCore, ExportToken, KeyMap, RecvError, SendError, SwissRegistry};
 use crate::{
     async_compat::{AsyncRead, AsyncWrite},
-    captp::msg::Operation,
+    captp::{msg::Operation, session::traits::AbstractCapTpSession},
 };
 use dashmap::{DashMap, DashSet};
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -48,7 +48,7 @@ impl<Reader, Writer> std::fmt::Debug for CapTpSessionInternal<Reader, Writer> {
 }
 
 impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
-    pub(crate) fn new(
+    pub(super) fn new(
         core: CapTpSessionCore<Reader, Writer>,
         signing_key: SigningKey,
         remote_vkey: VerifyingKey,
@@ -179,7 +179,8 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
             || self.aborted_by_remote.read().unwrap().is_some()
     }
 
-    pub(super) async fn recv_event(self: &Arc<Self>) -> Result<super::Event, RecvError>
+    // TODO :: propagate delivery errors
+    pub(super) async fn recv_event(self: Arc<Self>) -> Result<super::Event, RecvError>
     where
         Reader: AsyncRead + Send + Unpin + 'static,
         Writer: AsyncWrite + Send + Unpin + 'static,
@@ -247,7 +248,7 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
                         // };
                         // break Ok(Event::Delivery(del));
                         match self.exports.get(&pos) {
-                            Some(obj) => obj.deliver_only(del.args),
+                            Some(obj) => obj.deliver_only(del.args).unwrap(),
                             None => break Err(RecvError::UnknownTarget(pos, del.args)),
                         }
                     }
@@ -273,14 +274,17 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
                         // };
                         // break Ok(Event::Delivery(del));
                         match self.exports.get(&pos) {
-                            Some(obj) => obj.deliver(
-                                del.args,
-                                crate::captp::GenericResolver::new(
-                                    self.clone(),
-                                    del.answer_pos,
-                                    del.resolve_me_desc,
-                                ),
-                            ),
+                            Some(obj) => obj
+                                .deliver(
+                                    del.args,
+                                    crate::captp::GenericResolver::new(
+                                        self.clone(),
+                                        del.answer_pos,
+                                        del.resolve_me_desc,
+                                    ),
+                                )
+                                .await
+                                .unwrap(),
                             None => break Err(RecvError::UnknownTarget(pos, del.args)),
                         }
                     }

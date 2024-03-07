@@ -2,7 +2,8 @@ use arti_client::TorClientConfig;
 use common::{initialize_tracing, LogFormat};
 use rexa::{
     async_compat::{AsyncRead, AsyncWrite},
-    captp::{BootstrapEvent, CapTpSession},
+    captp::{msg::DescImport, object::Object, BootstrapEvent, CapTpSession},
+    locator::SturdyRefLocator,
     netlayer::{onion::OnionNetlayer, Netlayer},
 };
 use std::{
@@ -15,6 +16,8 @@ use tokio::{process::Command, runtime::Runtime, sync::Notify, task::JoinSet};
 use tor_hsservice::{config::OnionServiceConfigBuilder, HsNickname};
 
 mod common;
+
+const ENLIVENER_SWISS: &'static [u8] = b"gi02I1qghIwPiKGKleCQAOhpy3ZtYRpB";
 
 fn initialize(
     log_format: LogFormat,
@@ -137,8 +140,18 @@ where
         tracing::debug!(?event, "received captp event");
         match event {
             rexa::captp::Event::Bootstrap(BootstrapEvent::Fetch { swiss, resolver }) => {
-                //
-                todo!("handle bootstrap:fetch ({})", rexa::hash(&swiss))
+                match swiss.as_slice() {
+                    ENLIVENER_SWISS => {
+                        todo!()
+                    }
+                    swiss => {
+                        return Err(format!(
+                            "tried to fetch unrecognized swiss: {}",
+                            String::from_utf8_lossy(swiss)
+                        )
+                        .into())
+                    }
+                }
             }
             rexa::captp::Event::Abort(reason) => {
                 tracing::info!(%reason, "session aborted");
@@ -147,4 +160,76 @@ where
         }
     }
     Ok(())
+}
+
+struct Enlivener;
+impl Enlivener {
+    // TODO :: figure out what kind of thing this is supposed to return
+    async fn enliven<HKey, HVal>(
+        &self,
+        locator: &SturdyRefLocator<HKey, HVal>,
+    ) -> Result<syrup::Item, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        todo!()
+    }
+}
+impl Object for Enlivener {
+    fn deliver_only(
+        &self,
+        _: Vec<syrup::Item>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+        Err("enlivener doesn't accept op:deliver-only".into())
+    }
+
+    fn deliver<'s>(
+        &'s self,
+        args: Vec<syrup::Item>,
+        resolver: rexa::captp::GenericResolver,
+    ) -> futures::future::BoxFuture<
+        's,
+        Result<(), Box<dyn std::error::Error + Send + Sync + 'static>>,
+    > {
+        use futures::FutureExt;
+        use syrup::Item;
+        let mut args = args.into_iter();
+        async move {
+            match args.next() {
+                Some(arg) => {
+                    // FIX :: Probably shouldn't be using strings as the key here
+                    match <SturdyRefLocator<String, Item> as syrup::FromSyrupItem>::from_syrup_item(
+                        arg,
+                    ) {
+                        Ok(locator) => {
+                            match self.enliven(&locator).await {
+                                Ok(obj) => {
+                                    resolver
+                                        // TODO :: find out whether the answer_pos and resolve_me_desc matter here
+                                        .fulfill(&[obj], None, DescImport::Object(0.into()))
+                                        .await
+                                        .map_err(From::from)
+                                }
+                                Err(e) => {
+                                    return resolver
+                                        .break_promise(e.to_string())
+                                        .await
+                                        .map_err(From::from)
+                                }
+                            }
+                        }
+                        Err(arg) => resolver
+                            .break_promise(format!(
+                                "invalid sturdyref: {}",
+                                syrup::ser::to_pretty(&arg)?
+                            ))
+                            .await
+                            .map_err(From::from),
+                    }
+                }
+                None => resolver
+                    .break_promise("missing sturdyref argument")
+                    .await
+                    .map_err(From::from),
+            }
+        }
+        .boxed()
+    }
 }
