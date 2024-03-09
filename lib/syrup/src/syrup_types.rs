@@ -50,14 +50,14 @@ pub struct RawSyrup {
 
 impl RawSyrup {
     pub fn try_from_serialize(
-        s: &impl Serialize,
+        s: &(impl Serialize + ?Sized),
     ) -> Result<Self, <&mut ByteSerializer as Serializer>::Error> {
         Ok(Self {
             data: crate::ser::to_bytes(s)?,
         })
     }
 
-    pub fn from_serialize(s: &impl Serialize) -> Self {
+    pub fn from_serialize(s: &(impl Serialize + ?Sized)) -> Self {
         Self::try_from_serialize(s).unwrap()
     }
 

@@ -1,7 +1,7 @@
 use super::{CapTpSession, CapTpSessionInternal, Event, RecvError, SendError};
 use crate::async_compat::{AsyncRead, AsyncWrite};
 use crate::captp::msg::{OpAbort, OpDeliver, OpDeliverOnly};
-use crate::captp::object::{RemoteBootstrap, Resolver};
+use crate::captp::object::{RemoteBootstrap, RemoteObject, Resolver};
 use crate::captp::{msg::DescImport, object::Answer};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::future::BoxFuture;
@@ -27,6 +27,8 @@ pub(crate) trait CapTpDeliver {
         position: u64,
         args: Vec<syrup::RawSyrup>,
     ) -> futures::future::BoxFuture<'f, Result<Answer, SendError>>;
+    fn into_remote_object(self: Arc<Self>, position: u64) -> Option<RemoteObject>;
+    unsafe fn into_remote_object_unchecked(self: Arc<Self>, position: u64) -> RemoteObject;
 }
 
 /// Allows dynamic dispatch for CapTpSessions.
@@ -42,8 +44,8 @@ pub trait AbstractCapTpSession {
 
 impl<Reader, Writer> CapTpDeliver for CapTpSessionInternal<Reader, Writer>
 where
-    Reader: Send,
-    Writer: AsyncWrite + Send + Unpin,
+    Reader: Send + 'static,
+    Writer: AsyncWrite + Send + Unpin + 'static,
 {
     fn deliver_only<'f>(
         &'f self,
@@ -78,6 +80,18 @@ where
             Ok(answer)
         }
         .boxed()
+    }
+
+    fn into_remote_object(self: Arc<Self>, position: u64) -> Option<RemoteObject> {
+        if position != 0 && !self.imports.contains(&position) {
+            None
+        } else {
+            Some(RemoteObject::new(self.clone(), position))
+        }
+    }
+
+    unsafe fn into_remote_object_unchecked(self: Arc<Self>, position: u64) -> RemoteObject {
+        RemoteObject::new(self.clone(), position)
     }
 }
 

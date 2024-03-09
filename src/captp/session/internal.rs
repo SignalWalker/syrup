@@ -248,7 +248,7 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
                         // };
                         // break Ok(Event::Delivery(del));
                         match self.exports.get(&pos) {
-                            Some(obj) => obj.deliver_only(del.args).unwrap(),
+                            Some(obj) => obj.deliver_only(&*self, del.args).unwrap(),
                             None => break Err(RecvError::UnknownTarget(pos, del.args)),
                         }
                     }
@@ -276,6 +276,7 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
                         match self.exports.get(&pos) {
                             Some(obj) => obj
                                 .deliver(
+                                    &*self,
                                     del.args,
                                     crate::captp::GenericResolver::new(
                                         self.clone(),

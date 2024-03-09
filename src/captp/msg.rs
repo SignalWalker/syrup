@@ -12,7 +12,7 @@ mod import_export {
         Deserialize, Serialize, Symbol,
     };
 
-    #[derive(Clone, Serialize, Deserialize)]
+    #[derive(Clone, Copy, Serialize, Deserialize)]
     #[syrup(name = "desc:export")]
     pub struct DescExport {
         pub position: u64,
@@ -30,7 +30,7 @@ mod import_export {
         }
     }
 
-    #[derive(Clone, Serialize, Deserialize)]
+    #[derive(Clone, Copy, Serialize, Deserialize)]
     #[syrup(name = "desc:import-object")]
     pub struct DescImportObject {
         pub position: u64,
@@ -48,7 +48,7 @@ mod import_export {
         }
     }
 
-    #[derive(Clone, Serialize, Deserialize)]
+    #[derive(Clone, Copy, Serialize, Deserialize)]
     #[syrup(name = "desc:import-promise")]
     pub struct DescImportPromise {
         pub position: u64,
@@ -66,7 +66,7 @@ mod import_export {
         }
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Copy)]
     pub enum DescImport {
         Object(DescImportObject),
         Promise(DescImportPromise),

@@ -2364,6 +2364,7 @@ dependencies = [
  "lazy_static",
  "proptest",
  "rand",
+ "rexa-proc",
  "syrup",
  "thiserror",
  "time",
@@ -2374,6 +2375,16 @@ dependencies = [
  "tor-rtcompat",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "rexa-proc"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.52",
+ "thiserror",
 ]
 
 [[package]]
@@ -2928,8 +2939,12 @@ name = "syrup"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
+ "futures",
  "ibig",
+ "lazy_static",
  "nom",
+ "proptest",
+ "serde",
  "syrup-derive",
  "syrup-proc",
  "thiserror",

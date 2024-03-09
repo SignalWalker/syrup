@@ -3,6 +3,7 @@ use super::{
     SendError,
 };
 use crate::async_compat::{oneshot, AsyncWrite};
+use ed25519_dalek::VerifyingKey;
 use futures::future::BoxFuture;
 use std::{any::Any, sync::Arc};
 use syrup::{raw_syrup, Serialize, Symbol};
@@ -22,14 +23,16 @@ pub trait Object {
     // TODO :: Better error type
     fn deliver_only(
         &self,
+        session: &(dyn AbstractCapTpSession + Sync),
         args: Vec<syrup::Item>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>>;
     // TODO :: Better error type
-    fn deliver<'s>(
-        &'s self,
+    fn deliver<'result>(
+        &'result self,
+        session: &'result (dyn AbstractCapTpSession + Sync),
         args: Vec<syrup::Item>,
         resolver: GenericResolver,
-    ) -> BoxFuture<'s, Result<(), Box<dyn std::error::Error + Send + Sync + 'static>>>;
+    ) -> BoxFuture<'result, Result<(), Box<dyn std::error::Error + Send + Sync + 'static>>>;
 }
 
 // pub trait Object {
@@ -75,6 +78,7 @@ pub struct Resolver {
 impl Object for Resolver {
     fn deliver_only(
         &self,
+        session: &(dyn AbstractCapTpSession + Sync),
         args: Vec<syrup::Item>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         todo!()
@@ -82,8 +86,9 @@ impl Object for Resolver {
 
     fn deliver<'s>(
         &'s self,
+        _: &(dyn AbstractCapTpSession + Sync),
         args: Vec<syrup::Item>,
-        resolver: GenericResolver,
+        _: GenericResolver,
     ) -> BoxFuture<'s, Result<(), Box<dyn std::error::Error + Send + Sync + 'static>>> {
         use futures::FutureExt;
         async move {
@@ -231,41 +236,12 @@ impl RemoteObject {
         self.deliver_and(syrup::raw_syrup_unwrap![&Symbol(ident.as_ref()); args])
             .await
     }
-}
 
-pub struct ObjectInbox {
-    position: u64,
-    receiver: DeliveryReceiver,
-}
-
-impl ObjectInbox {
-    pub(crate) fn new(position: u64, receiver: DeliveryReceiver) -> Self {
-        Self { position, receiver }
+    pub fn get_remote_object(&self, position: u64) -> Option<RemoteObject> {
+        self.session.clone().into_remote_object(position)
     }
 
-    #[inline]
-    pub fn position(&self) -> u64 {
-        self.position
-    }
-}
-
-impl futures::stream::Stream for ObjectInbox {
-    type Item = Delivery;
-
-    fn poll_next(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        std::pin::pin!(&mut self.receiver).poll_next(cx)
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        futures::stream::Stream::size_hint(&self.receiver)
-    }
-}
-
-impl futures::stream::FusedStream for ObjectInbox {
-    fn is_terminated(&self) -> bool {
-        futures::stream::FusedStream::is_terminated(&self.receiver)
+    pub unsafe fn get_remote_object_unchecked(&self, position: u64) -> RemoteObject {
+        self.session.clone().into_remote_object_unchecked(position)
     }
 }

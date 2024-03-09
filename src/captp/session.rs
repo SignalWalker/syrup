@@ -121,16 +121,12 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
         res
     }
 
-    pub fn get_remote_object(self, position: u64) -> Option<RemoteObject>
+    pub fn into_remote_object(self, position: u64) -> Option<RemoteObject>
     where
         Reader: Send + 'static,
         Writer: AsyncWrite + Send + Unpin + 'static,
     {
-        if position != 0 && !self.base.imports.contains(&position) {
-            None
-        } else {
-            Some(RemoteObject::new(self.base.clone(), position))
-        }
+        self.base.into_remote_object(position)
     }
 
     pub fn get_remote_bootstrap(self) -> RemoteBootstrap

@@ -1,15 +1,23 @@
+[workspace]
+members = ["lib/*"]
+
+[workspace.package]
+authors = ["Ash Walker <ash@ashwalker.net>"]
+repository = "https://github.com/SignalWalker/rexa"
+license = "LGPL-3.0-or-later"
+
 [package]
 name = "rexa"
 version = "0.1.0"
 edition = "2021"
-authors = ["Ash Walker <ash@ashwalker.net>"]
+authors.workspace = true
 
 rust-version = "1.76" # TODO :: check whether rexa compiles with earlier versions of rust
 
 description = "An implementation of OCapN, a protocol for secure peer-to-peer networking."
 readme = true
-repository = "https://github.com/SignalWalker/rexa"
-license = "LGPL-3.0-or-later"
+repository.workspace = true
+license.workspace = true
 
 categories = [
   "asynchronous",
@@ -20,7 +28,10 @@ categories = [
 ]
 keywords = ["ocap", "ocapn", "object-capabilities"]
 
+
 [dependencies]
+rexa-proc = { path = "./lib/rexa-proc" }
+
 # meta
 thiserror = "^1.0"
 tracing = "^0.1"

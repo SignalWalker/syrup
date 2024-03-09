@@ -1,8 +1,9 @@
 use arti_client::TorClientConfig;
 use common::{initialize_tracing, LogFormat};
+use ed25519_dalek::VerifyingKey;
 use rexa::{
     async_compat::{AsyncRead, AsyncWrite},
-    captp::{msg::DescImport, object::Object, BootstrapEvent, CapTpSession},
+    captp::{msg::DescImport, object::Object, AbstractCapTpSession, BootstrapEvent, CapTpSession},
     locator::SturdyRefLocator,
     netlayer::{onion::OnionNetlayer, Netlayer},
 };
@@ -175,6 +176,7 @@ impl Enlivener {
 impl Object for Enlivener {
     fn deliver_only(
         &self,
+        session: &(dyn AbstractCapTpSession + Sync),
         _: Vec<syrup::Item>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         Err("enlivener doesn't accept op:deliver-only".into())
@@ -182,6 +184,7 @@ impl Object for Enlivener {
 
     fn deliver<'s>(
         &'s self,
+        session: &(dyn AbstractCapTpSession + Sync),
         args: Vec<syrup::Item>,
         resolver: rexa::captp::GenericResolver,
     ) -> futures::future::BoxFuture<

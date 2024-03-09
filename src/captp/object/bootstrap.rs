@@ -1,4 +1,4 @@
-use super::{ObjectInbox, RemoteObject};
+use super::RemoteObject;
 use crate::async_compat::AsyncWrite;
 use crate::captp::CapTpDeliver;
 use crate::captp::{
@@ -78,9 +78,3 @@ impl RemoteBootstrap {
             .await
     }
 }
-
-pub struct LocalBootstrap {
-    inbox: ObjectInbox,
-}
-
-impl LocalBootstrap {}
