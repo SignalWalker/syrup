@@ -13,22 +13,19 @@ where
     }
 
     #[deliver()]
-    async fn test_deliver(&self, _: u64) -> Result<(), std::io::Error> {
+    async fn test_deliver(&self, _: u64) -> Result<u64, String> {
         todo!()
     }
 
     #[deliver()]
-    fn test_session(
-        &self,
-        #[object(session)] session: &(dyn AbstractCapTpSession + Sync),
-    ) -> Result<(), std::io::Error> {
+    fn test_session(&self, session: &(dyn AbstractCapTpSession + Sync)) -> Result<u64, String> {
         todo!()
     }
 
     #[deliver_only(fallback)]
     fn deliver_only_fallback(
         &self,
-        #[object(args)] args: Vec<syrup::Item>,
+        args: Vec<syrup::Item>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         todo!()
     }

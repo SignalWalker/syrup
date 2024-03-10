@@ -72,6 +72,12 @@ mod import_export {
         Promise(DescImportPromise),
     }
 
+    impl Default for DescImport {
+        fn default() -> Self {
+            Self::Object(DescImportObject { position: 0 })
+        }
+    }
+
     impl std::fmt::Debug for DescImport {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
