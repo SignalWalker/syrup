@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
 use syn::{
     parse::Parse, parse_macro_input, parse_quote, parse_quote_spanned, punctuated::Punctuated,
     spanned::Spanned, Arm, Attribute, Expr, ExprField, ExprMethodCall, FnArg, ImplItemFn, ItemImpl,
-    PatType, Path, Receiver, ReturnType, Token, Type, TypeTraitObject,
+    LitBool, PatType, Path, Receiver, ReturnType, Signature, Token, Type, TypeTraitObject,
 };
 
 macro_rules! todo_str {
@@ -87,6 +89,7 @@ impl Parse for Metadata {
 enum DeliverInputKind {
     Unknown,
     Session,
+    Args,
     Resolver,
 }
 
@@ -95,6 +98,7 @@ impl Parse for DeliverInputKind {
         let kind_id = Ident::parse(input)?;
         match kind_id.to_string().as_str() {
             "session" => Ok(Self::Session),
+            "args" => Ok(Self::Args),
             "resolver" => Ok(Self::Resolver),
             _ => error!(kind_id.span() => "unrecognized object fn kind"),
         }
@@ -103,6 +107,7 @@ impl Parse for DeliverInputKind {
 
 enum DeliverInput {
     Session { span: Span },
+    Args { span: Span },
     Resolver { span: Span },
     Other(PatType),
 }
@@ -126,6 +131,7 @@ impl DeliverInput {
         Ok(match kind {
             DeliverInputKind::Unknown => Self::Other(input.clone()),
             DeliverInputKind::Session => Self::Session { span: input.span() },
+            DeliverInputKind::Args => Self::Args { span: input.span() },
             DeliverInputKind::Resolver => Self::Resolver { span: input.span() },
         })
     }
@@ -135,6 +141,7 @@ impl ToTokens for DeliverInput {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             DeliverInput::Session { span } => quote_spanned! {*span=> session}.to_tokens(tokens),
+            DeliverInput::Args { span } => quote_spanned! {*span=> args}.to_tokens(tokens),
             DeliverInput::Resolver { span } => quote_spanned! {*span=> resolver}.to_tokens(tokens),
             DeliverInput::Other(input) => {
                 let ty = &input.ty;
@@ -143,10 +150,10 @@ impl ToTokens for DeliverInput {
                     _ => "<unnamed>".to_owned(),
                 };
                 quote_spanned! {input.span()=>
-                    match args.next() {
-                        Some(item) => match <#ty>::from_syrup_item(item) {
-                            Ok(res) => res,
-                            Err(item) => ::std::todo!(::std::concat!("expected ", ::std::stringify!(#ty), ", got {:?}"), item)
+                    match __args.next() {
+                        Some(__item) => match <#ty>::from_syrup_item(__item) {
+                            Ok(__res) => __res,
+                            Err(__item) => ::std::todo!(::std::concat!("expected ", ::std::stringify!(#ty), ", got {:?}"), __item)
                         },
                         None => ::std::todo!(::std::concat!("missing argument: ", #id, ": ", ::std::stringify!(#ty)))
                     }
@@ -194,12 +201,12 @@ struct DeliverFn {
 }
 
 impl DeliverFn {
-    fn process(f: &mut ImplItemFn) -> syn::Result<Self> {
+    fn process(sig: &mut Signature) -> syn::Result<Self> {
         Ok(Self {
-            ident: f.sig.ident.clone(),
-            is_async: f.sig.asyncness.is_some(),
-            inputs: DeliverArgs::from_inputs(&mut f.sig.inputs)?,
-            output: f.sig.output.clone(),
+            ident: sig.ident.clone(),
+            is_async: sig.asyncness.is_some(),
+            inputs: DeliverArgs::from_inputs(&mut sig.inputs)?,
+            output: sig.output.clone(),
         })
     }
 }
@@ -207,7 +214,6 @@ impl DeliverFn {
 impl ToTokens for DeliverFn {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ident = &self.ident;
-        let ident_str = ident.to_string();
         let args = &self.inputs;
 
         let mut call: Expr = parse_quote_spanned! {self.ident.span()=> Self::#ident(self, #args)};
@@ -218,10 +224,7 @@ impl ToTokens for DeliverFn {
             call = parse_quote_spanned! {ty.span()=> #call.map_err(From::from)};
         }
 
-        let arm: Arm = parse_quote_spanned! {self.ident.span()=>
-            #ident_str => #call
-        };
-        arm.to_tokens(tokens)
+        call.to_tokens(tokens)
     }
 }
 
@@ -232,14 +235,14 @@ struct DeliverOnlyFn {
 }
 
 impl DeliverOnlyFn {
-    fn process(f: &mut ImplItemFn) -> Result<Self, syn::Error> {
-        if let Some(token) = f.sig.asyncness {
+    fn process(sig: &mut Signature) -> Result<Self, syn::Error> {
+        if let Some(token) = sig.asyncness {
             error!(token.span() => "deliver_only object functions must not be async");
         }
         Ok(Self {
-            ident: f.sig.ident.clone(),
-            inputs: DeliverArgs::from_inputs(&mut f.sig.inputs)?,
-            output: f.sig.output.clone(),
+            ident: sig.ident.clone(),
+            inputs: DeliverArgs::from_inputs(&mut sig.inputs)?,
+            output: sig.output.clone(),
         })
     }
 }
@@ -247,72 +250,67 @@ impl DeliverOnlyFn {
 impl ToTokens for DeliverOnlyFn {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ident = &self.ident;
-        let ident_str = ident.to_string();
         let args = &self.inputs;
 
         let mut call: Expr = parse_quote_spanned! {self.ident.span()=> Self::#ident(self, #args)};
         call = parse_quote_spanned! {self.output.span()=> #call.map_err(From::from)};
 
-        let arm: Arm = parse_quote_spanned! {self.ident.span()=>
-            #ident_str => #call
-        };
-        arm.to_tokens(tokens)
+        call.to_tokens(tokens)
     }
 }
 
 enum ObjectFn {
-    Deliver(DeliverFn),
-    DeliverOnly(DeliverOnlyFn),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ObjectFnKind {
-    Unknown,
-    Deliver,
-    DeliverOnly,
-    Skip,
-}
-
-impl Parse for ObjectFnKind {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let kind_id = Ident::parse(input)?;
-        match kind_id.to_string().as_str() {
-            "deliver" => Ok(Self::Deliver),
-            "deliver_only" => Ok(Self::DeliverOnly),
-            "skip" => Ok(Self::Skip),
-            _ => {
-                error!(kind_id.span() => "unrecognized object fn kind (must be either deliver, deliver_only, or skip)")
-            }
-        }
-    }
+    Deliver { f: DeliverFn, fallback: bool },
+    DeliverOnly { f: DeliverOnlyFn, fallback: bool },
 }
 
 impl ObjectFn {
     fn process(f: &mut ImplItemFn) -> Result<Option<Self>, syn::Error> {
-        let mut kind = ObjectFnKind::Unknown;
-        let mut obj_attr_index = None;
+        let mut res = None;
+        let mut attr_index = None;
         for (i, attr) in f.attrs.iter().enumerate() {
-            if let Some(id) = attr.path().get_ident() {
-                if id == "object" {
-                    kind = attr.parse_args::<ObjectFnKind>()?;
-                    obj_attr_index = Some(i);
-                    break;
-                }
+            if attr.path().is_ident("deliver") {
+                attr_index = Some(i);
+                let obj_fn = DeliverFn::process(&mut f.sig)?;
+                let mut fallback = false;
+                attr.parse_nested_meta(|meta| {
+                    if meta.path.is_ident("fallback") {
+                        fallback = true;
+                        Ok(())
+                    } else {
+                        Err(meta.error("unrecognized deliver property"))
+                    }
+                })?;
+                res = Some(ObjectFn::Deliver {
+                    f: obj_fn,
+                    fallback,
+                });
+                break;
+            } else if attr.path().is_ident("deliver_only") {
+                attr_index = Some(i);
+                let obj_fn = DeliverOnlyFn::process(&mut f.sig)?;
+                let mut fallback = false;
+                attr.parse_nested_meta(|meta| {
+                    if meta.path.is_ident("fallback") {
+                        fallback = true;
+                        Ok(())
+                    } else {
+                        Err(meta.error("unrecognized deliver_only property"))
+                    }
+                })?;
+                res = Some(ObjectFn::DeliverOnly {
+                    f: obj_fn,
+                    fallback,
+                });
+                break;
             }
         }
 
-        if let Some(i) = obj_attr_index {
+        if let Some(i) = attr_index {
             f.attrs.remove(i);
         }
 
-        Ok(match kind {
-            ObjectFnKind::Skip => None,
-            ObjectFnKind::Unknown => {
-                error!(f.sig.ident.span() => "must specify function kind using either #[object(deliver)], #[object(deliver_only)], or #[object(skip)]")
-            }
-            ObjectFnKind::Deliver => Some(Self::Deliver(DeliverFn::process(f)?)),
-            ObjectFnKind::DeliverOnly => Some(Self::DeliverOnly(DeliverOnlyFn::process(f)?)),
-        })
+        Ok(res)
     }
 }
 
@@ -322,20 +320,36 @@ struct ObjectDef {
 
     base: ItemImpl,
 
-    deliver_fns: Vec<DeliverFn>,
-    deliver_only_fns: Vec<DeliverOnlyFn>,
+    deliver_fns: HashMap<String, DeliverFn>,
+    deliver_fallback: Option<DeliverFn>,
+    deliver_only_fns: HashMap<String, DeliverOnlyFn>,
+    deliver_only_fallback: Option<DeliverOnlyFn>,
 }
 
 impl Parse for ObjectDef {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut base = ItemImpl::parse(input)?;
-        let mut deliver_fns = Vec::new();
-        let mut deliver_only_fns = Vec::new();
+        let mut deliver_fallback = None;
+        let mut deliver_fns = HashMap::new();
+        let mut deliver_only_fallback = None;
+        let mut deliver_only_fns = HashMap::new();
         for item in &mut base.items {
             match item {
                 syn::ImplItem::Fn(f) => match ObjectFn::process(f)? {
-                    Some(ObjectFn::Deliver(del)) => deliver_fns.push(del),
-                    Some(ObjectFn::DeliverOnly(del)) => deliver_only_fns.push(del),
+                    Some(ObjectFn::Deliver { f: del, fallback }) => {
+                        if fallback {
+                            deliver_fallback = Some(del);
+                        } else {
+                            deliver_fns.insert(del.ident.to_string(), del);
+                        }
+                    }
+                    Some(ObjectFn::DeliverOnly { f: del, fallback }) => {
+                        if fallback {
+                            deliver_only_fallback = Some(del);
+                        } else {
+                            deliver_only_fns.insert(del.ident.to_string(), del);
+                        }
+                    }
                     None => { /* skip */ }
                 },
                 syn::ImplItem::Verbatim(tt) => {
@@ -351,7 +365,9 @@ impl Parse for ObjectDef {
             self_ty: (*base.self_ty).clone(),
             base,
             deliver_fns,
+            deliver_fallback,
             deliver_only_fns,
+            deliver_only_fallback,
         })
     }
 }
@@ -373,6 +389,8 @@ pub fn impl_object(
         base,
         deliver_fns,
         deliver_only_fns,
+        deliver_fallback,
+        deliver_only_fallback,
         ..
     } = parse_macro_input!(obj_input as ObjectDef);
 
@@ -391,6 +409,29 @@ pub fn impl_object(
 
     let (impl_generics, _, where_clause) = base.generics.split_for_impl();
 
+    let mut deliver_only_arms = deliver_only_fns
+        .into_iter()
+        .map(|(ident, del)| {
+            parse_quote_spanned! {del.ident.span()=> #ident => #del }
+        })
+        .collect::<Vec<Arm>>();
+
+    let mut deliver_arms = deliver_fns
+        .into_iter()
+        .map(|(ident, del)| {
+            parse_quote_spanned! {del.ident.span()=> #ident => #del }
+        })
+        .collect::<Vec<Arm>>();
+
+    deliver_only_arms.push(match deliver_only_fallback {
+        Some(f) => parse_quote_spanned! {f.ident.span()=> id => #f},
+        _ => parse_quote! { id => todo!("unrecognized deliver_only function: {id}") },
+    });
+    deliver_arms.push(match deliver_fallback {
+        Some(f) => parse_quote_spanned! {f.ident.span()=> id => #f},
+        _ => parse_quote! { id => todo!("unrecognized deliver function: {id}") },
+    });
+
     quote_spanned! {span=>
         #base
 
@@ -398,33 +439,29 @@ pub fn impl_object(
         impl #impl_generics #object_trait for #self_ty #where_clause {
             fn deliver_only(&self, session: &(#session_type), args: #args_type) -> #result_type {
                 use #syrup_crate::FromSyrupItem;
-                let mut args = args.into_iter();
-                let id = match args.next() {
-                    Some(#syrup_item::Symbol(id)) => id,
-                    Some(item) => todo!("first argument to impl_object deliver_only is not symbol"),
+                let mut __args = args.iter();
+                let __id = match __args.next() {
+                    Some(#syrup_item::Symbol(__id)) => __id,
+                    Some(__item) => todo!("first argument to impl_object deliver_only is not symbol: {__item:?}"),
                     None => todo!("no arguments to impl_object deliver_only")
                 };
-                match id.as_str() {
-                    #(#deliver_only_fns),*,
-
-                    id => todo!("unrecognized deliver_only function: {id}")
+                match __id.as_str() {
+                    #(#deliver_only_arms),*
                 }
             }
 
             fn deliver<'result>(&'result self, session: &'result (#session_type), args: #args_type, resolver: #resolver_type) -> #futures_crate::future::BoxFuture<'result, #result_type> {
                 use #futures_crate::FutureExt;
                 use #syrup_crate::FromSyrupItem;
-                let mut args = args.into_iter();
-                let id = match args.next() {
-                    Some(#syrup_item::Symbol(id)) => id,
-                    Some(item) => todo!("first argument to impl_object deliver is not symbol"),
-                    None => todo!("no arguments to impl_object deliver")
-                };
                 async move {
-                    match id.as_str() {
-                        #(#deliver_fns),*,
-
-                        id => todo!("unrecognized deliver function: {id}")
+                    let mut __args = args.iter();
+                    let __id = match __args.next() {
+                        Some(#syrup_item::Symbol(__id)) => __id,
+                        Some(__item) => todo!("first argument to impl_object deliver is not symbol: {__item:?}"),
+                        None => todo!("no arguments to impl_object deliver")
+                    };
+                    match __id.as_str() {
+                        #(#deliver_arms),*
                     }
                 }.boxed()
             }

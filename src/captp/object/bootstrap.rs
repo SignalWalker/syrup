@@ -42,7 +42,8 @@ impl RemoteBootstrap {
                         let mut args = res?.into_iter();
                         match args.next() {
                             Some(i) => Ok(RemoteObject {
-                                position: <u64 as syrup::FromSyrupItem>::from_syrup_item(i)?,
+                                position: <u64 as syrup::FromSyrupItem>::from_syrup_item(&i)
+                                    .map_err(Clone::clone)?,
                                 session,
                             }),
                             None => todo!(),

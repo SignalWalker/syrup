@@ -221,7 +221,7 @@ impl std::fmt::Debug for Item {
 }
 
 pub trait FromSyrupItem: Sized {
-    fn from_syrup_item(item: Item) -> Result<Self, Item>;
+    fn from_syrup_item(item: &Item) -> Result<Self, &Item>;
 }
 
 pub trait AsSyrupItem {
@@ -232,8 +232,8 @@ impl<T> FromSyrupItem for T
 where
     for<'de> T: Deserialize<'de>,
 {
-    fn from_syrup_item(item: Item) -> Result<Self, Item> {
-        let serialized = crate::ser::to_bytes(&item).unwrap();
+    fn from_syrup_item(item: &Item) -> Result<Self, &Item> {
+        let serialized = crate::ser::to_bytes(item).unwrap();
         crate::de::from_bytes(&serialized).map_err(|_| item)
     }
 }

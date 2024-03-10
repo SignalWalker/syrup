@@ -199,7 +199,7 @@ impl Object for Enlivener {
                 Some(arg) => {
                     // FIX :: Probably shouldn't be using strings as the key here
                     match <SturdyRefLocator<String, Item> as syrup::FromSyrupItem>::from_syrup_item(
-                        arg,
+                        &arg,
                     ) {
                         Ok(locator) => {
                             match self.enliven(&locator).await {
@@ -221,7 +221,7 @@ impl Object for Enlivener {
                         Err(arg) => resolver
                             .break_promise(format!(
                                 "invalid sturdyref: {}",
-                                syrup::ser::to_pretty(&arg)?
+                                syrup::ser::to_pretty(arg)?
                             ))
                             .await
                             .map_err(From::from),
