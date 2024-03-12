@@ -1,8 +1,8 @@
 use rexa::netlayer::Netlayer;
 
-pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
+pub(crate) type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
-pub trait NlFuture<Nl>: std::future::Future<Output = Result<Nl, BoxError>> {}
+pub(crate) trait NlFuture<Nl>: std::future::Future<Output = Result<Nl, BoxError>> {}
 impl<Nl, F: std::future::Future<Output = Result<Nl, BoxError>>> NlFuture<Nl> for F {}
 
 #[macro_export]
@@ -17,16 +17,18 @@ macro_rules! test_nl {
     };
 }
 
+#[allow(dead_code)]
 #[cfg(feature = "netlayer-mock")]
-pub async fn make_mock_netlayer(
+pub(crate) async fn make_mock_netlayer(
     test_name: &'static str,
     index: usize,
 ) -> Result<std::sync::Arc<rexa::netlayer::mock::MockNetlayer>, BoxError> {
     rexa::netlayer::mock::MockNetlayer::bind(format!("{test_name}-{index}")).map_err(From::from)
 }
 
+#[allow(dead_code)]
 #[cfg(feature = "netlayer-datastream")]
-pub async fn make_tcp_netlayer(
+pub(crate) async fn make_tcp_netlayer(
     _: &'static str,
     _: usize,
 ) -> Result<rexa::netlayer::datastream::TcpIpNetlayer, BoxError> {
@@ -38,8 +40,12 @@ pub async fn make_tcp_netlayer(
     .map_err(From::from)
 }
 
+#[allow(dead_code)]
 #[cfg(target_family = "unix")]
-pub async fn mktemp(dir: bool, prefix: impl AsRef<str>) -> Result<std::path::PathBuf, BoxError> {
+pub(crate) async fn mktemp(
+    dir: bool,
+    prefix: impl AsRef<str>,
+) -> Result<std::path::PathBuf, BoxError> {
     use std::ffi::OsStr;
     use std::ffi::OsString;
     use std::os::unix::ffi::OsStrExt;
@@ -76,8 +82,9 @@ pub async fn mktemp(dir: bool, prefix: impl AsRef<str>) -> Result<std::path::Pat
     Ok(res)
 }
 
+#[allow(dead_code)]
 #[cfg(all(target_family = "unix", feature = "netlayer-datastream"))]
-pub async fn make_unix_netlayer(
+pub(crate) async fn make_unix_netlayer(
     test_name: &'static str,
     index: usize,
 ) -> Result<rexa::netlayer::datastream::UnixNetlayer, BoxError> {
@@ -99,8 +106,9 @@ pub async fn make_unix_netlayer(
         .map_err(From::from)
 }
 
+#[allow(dead_code)]
 #[cfg(feature = "netlayer-onion")]
-pub async fn make_onion_netlayer(
+pub(crate) async fn make_onion_netlayer(
     test_name: &'static str,
     index: usize,
 ) -> Result<rexa::netlayer::onion::OnionNetlayer<tor_rtcompat::PreferredRuntime>, BoxError> {

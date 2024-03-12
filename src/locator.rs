@@ -107,13 +107,16 @@ mod test {
         ($left:expr, $right:expr) => {{
             let lres = $left;
             let rres = $right;
-            assert_eq!(
-                lres,
-                rres,
-                "{} != {}",
-                unsafe { std::str::from_utf8_unchecked(AsRef::<[u8]>::as_ref(&lres)) },
-                unsafe { std::str::from_utf8_unchecked(AsRef::<[u8]>::as_ref(&rres)) }
-            );
+            #[allow(unsafe_code)]
+            {
+                assert_eq!(
+                    lres,
+                    rres,
+                    "{} != {}",
+                    unsafe { std::str::from_utf8_unchecked(AsRef::<[u8]>::as_ref(&lres)) },
+                    unsafe { std::str::from_utf8_unchecked(AsRef::<[u8]>::as_ref(&rres)) }
+                );
+            }
         }};
     }
 

@@ -235,6 +235,7 @@ impl<'ser> Serializer for &'ser mut ByteSerializer {
         Ok(ByteSetSerializer::new(self, len))
     }
 
+    #[allow(unsafe_code)]
     unsafe fn serialize_raw(self, data: &[u8]) -> Result<Self::Ok, Self::Error> {
         self.bytes.extend_from_slice(data);
         Ok(())

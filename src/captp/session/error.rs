@@ -1,5 +1,3 @@
-use crate::captp::msg::{OpDeliver, OpDeliverOnly};
-
 #[derive(Debug, thiserror::Error)]
 pub enum RecvError {
     #[error("failed to parse syrup: {0:?}")]

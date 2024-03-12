@@ -1,15 +1,10 @@
 use super::{
-    msg::DescImport, AbstractCapTpSession, CapTpDeliver, CapTpSession, Delivery, GenericResolver,
-    SendError,
+    msg::DescImport, AbstractCapTpSession, CapTpDeliver, Delivery, GenericResolver, SendError,
 };
-use crate::async_compat::{oneshot, AsyncWrite};
-use ed25519_dalek::VerifyingKey;
+use crate::async_compat::oneshot;
 use futures::future::BoxFuture;
-use std::{any::Any, sync::Arc};
-use syrup::{raw_syrup, Serialize, Symbol};
-
-mod promise;
-pub use promise::*;
+use std::sync::Arc;
+use syrup::{Serialize, Symbol};
 
 mod bootstrap;
 pub use bootstrap::*;
@@ -75,11 +70,12 @@ pub struct Resolver {
     sender: std::sync::Mutex<Option<PromiseSender>>,
 }
 
+// TODO :: convert this to #[impl_object]
 impl Object for Resolver {
     fn deliver_only(
         &self,
-        session: &(dyn AbstractCapTpSession + Sync),
-        args: Vec<syrup::Item>,
+        _session: &(dyn AbstractCapTpSession + Sync),
+        _args: Vec<syrup::Item>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         todo!()
     }
@@ -241,7 +237,8 @@ impl RemoteObject {
         self.session.clone().into_remote_object(position)
     }
 
+    #[allow(unsafe_code)]
     pub unsafe fn get_remote_object_unchecked(&self, position: u64) -> RemoteObject {
-        self.session.clone().into_remote_object_unchecked(position)
+        unsafe { self.session.clone().into_remote_object_unchecked(position) }
     }
 }

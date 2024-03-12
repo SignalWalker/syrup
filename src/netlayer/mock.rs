@@ -1,28 +1,21 @@
-use tokio::io::DuplexStream;
-
 use crate::{
-    async_compat::{
-        mpsc, oneshot, AsyncRead, AsyncWrite, Mutex as AsyncMutex, RwLock as AsyncRwLock,
-    },
-    captp::{CapTpSession, CapTpSessionManager},
+    async_compat::{mpsc, oneshot, Mutex as AsyncMutex, RwLock as AsyncRwLock},
+    captp::CapTpSessionManager,
     locator::NodeLocator,
 };
 use std::{
     collections::HashMap,
     future::Future,
-    io::Write,
-    pin::pin,
-    sync::{Arc, Mutex, PoisonError, RwLock, Weak},
-    task::{ready, Poll},
+    sync::{Arc, PoisonError, RwLock, Weak},
 };
+#[cfg(feature = "tokio")]
+use tokio::io::DuplexStream;
 
 use super::Netlayer;
 
 type MockReader = <Arc<MockNetlayer> as Netlayer>::Reader;
 type MockWriter = <Arc<MockNetlayer> as Netlayer>::Writer;
-type MockSession = CapTpSession<MockReader, MockWriter>;
 type StreamSend = oneshot::Sender<(MockReader, MockWriter)>;
-type StreamRecv = oneshot::Receiver<(MockReader, MockWriter)>;
 
 lazy_static::lazy_static! {
     static ref MOCK_REGISTRY: RwLock<HashMap<String, (Weak<MockNetlayer>, mpsc::UnboundedSender<StreamSend>)>> = RwLock::default();

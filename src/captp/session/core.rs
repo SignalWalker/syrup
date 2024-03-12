@@ -3,12 +3,12 @@ use syrup::{Deserialize, Serialize};
 
 #[derive(Debug)]
 pub(super) struct CapTpSessionCore<Reader, Writer> {
-    pub(crate) reader: Mutex<Reader>,
-    pub(crate) writer: Mutex<Writer>,
+    pub(super) reader: Mutex<Reader>,
+    pub(super) writer: Mutex<Writer>,
 }
 
 impl<Reader, Writer> CapTpSessionCore<Reader, Writer> {
-    pub(crate) fn new(reader: Reader, writer: Writer) -> Self {
+    pub(super) fn new(reader: Reader, writer: Writer) -> Self {
         Self {
             reader: Mutex::new(reader),
             writer: Mutex::new(writer),
@@ -16,7 +16,7 @@ impl<Reader, Writer> CapTpSessionCore<Reader, Writer> {
     }
 
     #[inline]
-    pub(crate) async fn recv(&self, buf: &mut [u8]) -> Result<usize, std::io::Error>
+    pub(super) async fn recv(&self, buf: &mut [u8]) -> Result<usize, std::io::Error>
     where
         Reader: AsyncRead + Unpin,
     {
@@ -24,7 +24,7 @@ impl<Reader, Writer> CapTpSessionCore<Reader, Writer> {
     }
 
     // #[inline]
-    // pub(crate) fn send<'write>(
+    // pub(super) fn send<'write>(
     //     &'write mut self,
     //     buf: &'write [u8],
     // ) -> impl Future<Output = Result<usize, futures::io::Error>> + 'write
@@ -35,14 +35,14 @@ impl<Reader, Writer> CapTpSessionCore<Reader, Writer> {
     // }
 
     #[inline]
-    pub(crate) async fn send_all(&self, buf: &[u8]) -> Result<(), std::io::Error>
+    pub(super) async fn send_all(&self, buf: &[u8]) -> Result<(), std::io::Error>
     where
         Writer: AsyncWrite + Unpin,
     {
         self.writer.lock().await.write_all(buf).await
     }
 
-    pub(crate) async fn send_msg<Msg: Serialize>(&self, msg: &Msg) -> Result<(), std::io::Error>
+    pub(super) async fn send_msg<Msg: Serialize>(&self, msg: &Msg) -> Result<(), std::io::Error>
     where
         Writer: AsyncWrite + Unpin,
     {
@@ -50,14 +50,14 @@ impl<Reader, Writer> CapTpSessionCore<Reader, Writer> {
         self.send_all(&syrup::ser::to_bytes(msg).unwrap()).await
     }
 
-    pub(crate) async fn flush(&self) -> Result<(), std::io::Error>
+    pub(super) async fn flush(&self) -> Result<(), std::io::Error>
     where
         Writer: AsyncWrite + Unpin,
     {
         self.writer.lock().await.flush().await
     }
 
-    pub(crate) async fn recv_msg<'de, Msg: Deserialize<'de>>(
+    pub(super) async fn recv_msg<'de, Msg: Deserialize<'de>>(
         &self,
         recv_buf: &'de mut [u8],
     ) -> Result<Msg, std::io::Error>

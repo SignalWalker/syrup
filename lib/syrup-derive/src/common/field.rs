@@ -7,26 +7,26 @@ use syn::{
     Lifetime, LifetimeParam, Path, PathArguments, Token, Type, WherePredicate,
 };
 
-pub struct Field<'input> {
-    pub ident: Option<&'input Ident>,
-    pub ty: &'input Type,
+pub(crate) struct Field<'input> {
+    pub(crate) ident: Option<&'input Ident>,
+    pub(crate) ty: &'input Type,
 
-    pub ser_generics: Generics,
-    pub des_generics: Generics,
+    pub(crate) ser_generics: Generics,
+    pub(crate) des_generics: Generics,
 
     // /// if not present during deserialization, generate with this function
     // default: Option<Path>,
-    pub from: Option<With>,
-    pub into: Option<With>,
+    pub(crate) from: Option<With>,
+    pub(crate) into: Option<With>,
 }
 
 impl<'input> Field<'input> {
-    pub fn from_field(
+    pub(crate) fn from_field(
         syrup: &Path,
         field: &'input syn::Field,
         c_ser_generics: &Generics,
         c_des_generics: &Generics,
-        c_des_lifetime: &Lifetime,
+        _c_des_lifetime: &Lifetime,
     ) -> Result<Self, syn::Error> {
         // let mut default: Option<Path> = None;
         let mut from = None;
@@ -96,6 +96,7 @@ impl<'input> Field<'input> {
                 generics: Generics,
                 lifetimes: HashMap<&'p Ident, &'p GenericParam>,
                 types: HashMap<&'p Ident, &'p GenericParam>,
+                #[allow(dead_code)]
                 consts: HashMap<&'p Ident, &'p GenericParam>,
                 predicates: HashMap<&'p Ident, &'p WherePredicate>,
             }
@@ -261,9 +262,9 @@ impl<'input> Field<'input> {
         })
     }
 
-    pub fn generate_deserialize(
+    pub(crate) fn generate_deserialize(
         &self,
-        container: &Container,
+        container: &Container<'_>,
         driver: &Expr,
     ) -> Result<Expr, syn::Error> {
         let parse_to = self.ty;
@@ -373,9 +374,9 @@ impl<'input> Field<'input> {
         }
     }
 
-    pub fn generate_serialize_expr(
+    pub(crate) fn generate_serialize_expr(
         &self,
-        container: &Container,
+        container: &Container<'_>,
         driver: &Expr,
         index: u32,
     ) -> Result<Expr, syn::Error> {

@@ -12,26 +12,26 @@ mod __impl_vkey {
     #[syrup(crate = crate, name = "curve")]
     pub(super) struct Curve {
         #[syrup(as_symbol)]
-        pub kind: String,
+        pub(super) kind: String,
     }
     #[derive(Serialize, Deserialize)]
     #[syrup(crate = crate, name = "flags")]
     pub(super) struct Flags {
         #[syrup(as_symbol)]
-        pub flags: String,
+        pub(super) flags: String,
     }
     #[derive(Serialize, Deserialize)]
     #[syrup(crate = crate, name = "q")]
     pub(super) struct Q {
         #[syrup(with = crate::bytes::array)]
-        pub q: [u8; 32],
+        pub(super) q: [u8; 32],
     }
     #[derive(Serialize, Deserialize)]
     #[syrup(crate = crate, name = "ecc")]
     pub(super) struct Ecc {
-        pub curve: Curve,
-        pub flags: Flags,
-        pub q: Q,
+        pub(super) curve: Curve,
+        pub(super) flags: Flags,
+        pub(super) q: Q,
     }
 }
 

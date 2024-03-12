@@ -1,4 +1,4 @@
-use super::{CapTpSession, CapTpSessionInternal, Event, RecvError, SendError};
+use super::{CapTpSessionInternal, Event, RecvError, SendError};
 use crate::async_compat::{AsyncRead, AsyncWrite};
 use crate::captp::msg::{OpAbort, OpDeliver, OpDeliverOnly};
 use crate::captp::object::{RemoteBootstrap, RemoteObject, Resolver};
@@ -6,7 +6,6 @@ use crate::captp::{msg::DescImport, object::Answer};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use std::future::Future;
 use std::sync::Arc;
 
 pub(crate) trait CapTpDeliver {
@@ -28,6 +27,7 @@ pub(crate) trait CapTpDeliver {
         args: Vec<syrup::RawSyrup>,
     ) -> futures::future::BoxFuture<'f, Result<Answer, SendError>>;
     fn into_remote_object(self: Arc<Self>, position: u64) -> Option<RemoteObject>;
+    #[allow(unsafe_code)]
     unsafe fn into_remote_object_unchecked(self: Arc<Self>, position: u64) -> RemoteObject;
 }
 
@@ -90,6 +90,7 @@ where
         }
     }
 
+    #[allow(unsafe_code)]
     unsafe fn into_remote_object_unchecked(self: Arc<Self>, position: u64) -> RemoteObject {
         RemoteObject::new(self.clone(), position)
     }

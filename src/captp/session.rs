@@ -1,18 +1,16 @@
 use super::{
-    msg::{DescImport, OpAbort, OpDeliver, OpDeliverOnly, Operation},
+    msg::OpAbort,
     object::{RemoteBootstrap, RemoteObject},
 };
 use crate::async_compat::{AsyncRead, AsyncWrite};
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use futures::FutureExt;
 use std::sync::Arc;
-use syrup::{Deserialize, Serialize};
 
 mod builder;
 pub use builder::*;
 
 mod core;
-pub use core::*;
+use core::*;
 
 // mod message_queue;
 // pub use message_queue::*;
@@ -24,16 +22,13 @@ mod error;
 pub use error::*;
 
 mod keymap;
-pub use keymap::*;
+pub(crate) use keymap::*;
 
 mod registry;
 pub use registry::*;
 
-mod export_token;
-pub use export_token::*;
-
 mod internal;
-pub use internal::*;
+pub(crate) use internal::*;
 
 mod resolver;
 pub use resolver::*;
@@ -112,11 +107,11 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
         self.base.is_aborted()
     }
 
-    pub async fn abort(self, reason: impl Into<OpAbort>) -> Result<(), SendError>
+    pub async fn abort(&self, reason: impl Into<OpAbort>) -> Result<(), SendError>
     where
         Writer: AsyncWrite + Unpin,
     {
-        let res = self.send_msg(&reason.into()).await;
+        let res = self.base.send_msg(&reason.into()).await;
         self.base.local_abort();
         res
     }
@@ -181,76 +176,4 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
     {
         self.base.clone().recv_event().await
     }
-}
-
-impl<Reader, Writer> CapTpSession<Reader, Writer> {
-    pub(super) async fn deliver_only<Arg: Serialize>(
-        &self,
-        position: u64,
-        args: Vec<Arg>,
-    ) -> Result<(), SendError>
-    where
-        Writer: AsyncWrite + Unpin,
-    {
-        self.send_msg(&OpDeliverOnly::new(position, args)).await
-    }
-
-    pub(super) async fn deliver<Arg: Serialize>(
-        &self,
-        position: u64,
-        args: Vec<Arg>,
-        answer_pos: Option<u64>,
-        resolve_me_desc: DescImport,
-    ) -> Result<(), SendError>
-    where
-        Writer: AsyncWrite + Unpin,
-    {
-        self.send_msg(&OpDeliver::new(position, args, answer_pos, resolve_me_desc))
-            .await
-    }
-
-    pub(super) async fn deliver_and<Arg: Serialize>(
-        &self,
-        position: u64,
-        args: Vec<Arg>,
-    ) -> Result<super::object::Answer, SendError>
-    where
-        Writer: AsyncWrite + Unpin,
-    {
-        let (resolver, answer) = super::object::Resolver::new();
-        let pos = self.export(resolver);
-        self.deliver(position, args, None, DescImport::Object(pos.into()))
-            .await?;
-        Ok(answer)
-    }
-
-    async fn recv_msg<Msg>(&self) -> Result<Msg, RecvError>
-    where
-        Reader: AsyncRead + Unpin,
-        for<'de> Msg: Deserialize<'de>,
-    {
-        self.base.recv_msg::<Msg>().await
-    }
-
-    async fn send_msg<Msg: Serialize>(&self, msg: &Msg) -> Result<(), SendError>
-    where
-        Writer: AsyncWrite + Unpin,
-    {
-        self.base.send_msg(msg).await
-    }
-
-    // pub(crate) async fn recv_delivery_for(
-    //     &self,
-    //     position: u64,
-    // ) -> Result<Delivery<Socket>, RecvError>
-    // where
-    //     Socket: AsyncRead + Unpin,
-    // {
-    //     loop {
-    //         match self.recv_event().await? {
-    //             Event::Delivery(del) if del.position() == position => break Ok(del),
-    //             ev => self.base.msg_queue_sender.send(ev).unwrap(),
-    //         }
-    //     }
-    // }
 }

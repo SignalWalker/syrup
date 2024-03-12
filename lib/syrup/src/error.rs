@@ -31,7 +31,7 @@ pub struct Error<'input> {
 }
 
 impl<'input> std::fmt::Display for Error<'input> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         todo!()
     }
 }
@@ -56,7 +56,7 @@ impl<'input> nom::error::ParseError<&'input [u8]> for Error<'input> {
         }
     }
 
-    fn append(input: &'input [u8], kind: nom::error::ErrorKind, other: Self) -> Self {
+    fn append(_input: &'input [u8], _kind: nom::error::ErrorKind, _other: Self) -> Self {
         todo!()
     }
 }

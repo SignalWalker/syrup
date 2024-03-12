@@ -26,7 +26,7 @@ where
         let node_a = make_nl("fetch", 0).await?;
         let node_b = make_nl("fetch", 1).await?;
 
-        let (session_ab, session_ba) = common::connect_nodes(node_a, node_b).await?;
+        let (_session_ab, _session_ba) = common::connect_nodes(node_a, node_b).await?;
 
         todo!();
 

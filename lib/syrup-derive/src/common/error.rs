@@ -2,9 +2,11 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+pub(crate) enum Error {
+    #[allow(dead_code)]
     #[error("not yet implemented: {0}")]
     Todo(&'static str),
+    #[allow(dead_code)]
     #[error("unrecognized syrup attribute: {0:?}")]
     UnrecognizedAttribute(syn::Meta),
     #[error(transparent)]
@@ -24,6 +26,7 @@ impl quote::ToTokens for Error {
     }
 }
 
+#[allow(unused_macro_rules)]
 macro_rules! errtodo {
     ($span:expr, $feature:expr) => {
         return Err(syn::Error::new(

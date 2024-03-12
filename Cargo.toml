@@ -36,7 +36,6 @@ rexa-proc = { path = "./lib/rexa-proc" }
 thiserror = "^1.0"
 tracing = "^0.1"
 
-crossbeam = { version = "^0.8" }
 
 futures = { version = "^0.3" }
 tokio = { version = "^1.36", optional = true, default-features = false, features = [
@@ -67,10 +66,9 @@ arti-client = { version = "^0.14", git = "https://gitlab.torproject.org/tpo/core
 tor-rtcompat = { version = "^0.10", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
 tor-hsservice = { version = "^0.8", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
 tor-cell = { version = "^0.16", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
-tor-hscrypto = { version = "^0.6", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
+# tor-hscrypto = { version = "^0.6", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
 
 [dev-dependencies]
-proptest = { version = "^1.4" }
 lazy_static = { version = "^1.4" }
 
 tracing-subscriber = { version = "^0.3", features = [

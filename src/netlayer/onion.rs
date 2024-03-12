@@ -3,14 +3,12 @@ use crate::{
     captp::{CapTpSession, CapTpSessionManager},
     locator::NodeLocator,
 };
-use arti_client::{DataReader, DataStream, DataWriter, IntoTorAddr, TorClient, TorClientConfig};
+use arti_client::{DataReader, DataWriter, TorClient, TorClientConfig};
 use futures::{lock::Mutex, stream::BoxStream, StreamExt};
 use std::future::Future;
 use std::sync::Arc;
 use tor_cell::relaycell::msg::Connected;
-use tor_hsservice::{
-    OnionService, OnionServiceConfig, RendRequest, RunningOnionService, StreamRequest,
-};
+use tor_hsservice::{OnionServiceConfig, RunningOnionService, StreamRequest};
 use tor_rtcompat::Runtime;
 
 #[cfg(feature = "tokio")]

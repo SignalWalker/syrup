@@ -3,7 +3,6 @@ use crate::{
     ser::{ByteSerializer, SerializeDict, SerializeRecord, SerializeSeq, SerializeSet, Serializer},
     Deserialize, Serialize,
 };
-use ibig::IBig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Symbol<T>(pub T);
@@ -63,6 +62,7 @@ impl RawSyrup {
 
     /// # Safety
     /// - Input data must be valid Syrup.
+    #[allow(unsafe_code)]
     pub unsafe fn from_raw(data: Vec<u8>) -> Self {
         Self { data }
     }
@@ -70,18 +70,21 @@ impl RawSyrup {
 
 impl Serialize for RawSyrup {
     fn serialize<Ser: Serializer>(&self, s: Ser) -> Result<Ser::Ok, Ser::Error> {
-        unsafe { s.serialize_raw(&self.data) }
+        #[allow(unsafe_code)]
+        unsafe {
+            s.serialize_raw(&self.data)
+        }
     }
 }
 
 #[macro_export]
 macro_rules! raw_syrup {
     [$($item:expr),* $(,)?] => {
-        vec![$($crate::RawSyrup::try_from_serialize($item)?),+]
+        vec![$($crate::RawSyrup::try_from_serialize($item)?),*]
     };
     [$($item:expr),* $(,)?; $iter:expr] => {
         {
-            let mut __res = $crate::raw_syrup![$($item),+];
+            let mut __res = $crate::raw_syrup![$($item),*];
             __res.extend($iter.into_iter().map($crate::RawSyrup::from_serialize));
             __res
         }
@@ -313,7 +316,7 @@ impl<'de> Deserialize<'de> for Item {
         impl<'de> Visitor<'de> for __Visitor {
             type Value = Item;
 
-            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            fn expecting(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 todo!()
             }
 

@@ -1,14 +1,15 @@
-pub mod netlayers;
+pub(crate) mod netlayers;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LogFormat {
+pub(crate) enum LogFormat {
     Compact,
     Full,
     Pretty,
     Json,
 }
 
-pub fn initialize_tracing(
+pub(crate) fn initialize_tracing(
     log_format: LogFormat,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     let log_filter = std::env::var("REXA_LOG_FILTER").unwrap_or("warn,rexa=info".to_owned());
@@ -34,8 +35,9 @@ pub fn initialize_tracing(
     }
 }
 
+#[allow(dead_code)]
 #[cfg(feature = "tokio")]
-pub fn initialize(
+pub(crate) fn initialize(
     log_format: LogFormat,
 ) -> Result<tokio::runtime::Runtime, Box<dyn std::error::Error + Send + Sync + 'static>> {
     initialize_tracing(log_format)?;
@@ -45,8 +47,9 @@ pub fn initialize(
         .map_err(From::from)
 }
 
+#[allow(dead_code)]
 #[cfg(feature = "tokio")]
-pub async fn connect_nodes<Nl: rexa::netlayer::Netlayer + Send + 'static>(
+pub(crate) async fn connect_nodes<Nl: rexa::netlayer::Netlayer + Send + 'static>(
     a: Nl,
     b: Nl,
 ) -> Result<

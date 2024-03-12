@@ -1,7 +1,7 @@
-use super::{CapTpSessionCore, ExportToken, KeyMap, RecvError, SendError, SwissRegistry};
+use super::{CapTpSessionCore, KeyMap, RecvError, SendError};
 use crate::{
     async_compat::{AsyncRead, AsyncWrite},
-    captp::{msg::Operation, session::traits::AbstractCapTpSession},
+    captp::msg::Operation,
 };
 use dashmap::{DashMap, DashSet};
 use ed25519_dalek::{SigningKey, VerifyingKey};

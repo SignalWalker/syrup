@@ -6,29 +6,29 @@ use syn::{
     Generics, Ident, Lifetime, LitStr, Path, Token, WherePredicate,
 };
 
-pub struct Container<'input> {
-    pub ident: &'input Ident,
+pub(crate) struct Container<'input> {
+    pub(crate) ident: &'input Ident,
 
     /// path to syrup crate
-    pub syrup_crate: Path,
+    pub(crate) syrup_crate: Path,
     /// custom `expecting` message
-    pub expecting: Option<Expr>,
+    pub(crate) expecting: Option<Expr>,
 
     /// name with which to serialize/deserialize records of this type
-    pub name: String,
+    pub(crate) name: String,
 
-    pub from: Option<With>,
-    pub into: Option<With>,
+    pub(crate) from: Option<With>,
+    pub(crate) into: Option<With>,
 
-    pub ser_generics: Generics,
-    pub des_generics: Generics,
-    pub des_lifetime: Lifetime,
+    pub(crate) ser_generics: Generics,
+    pub(crate) des_generics: Generics,
+    pub(crate) des_lifetime: Lifetime,
 
-    pub inner: Option<Inner<'input>>,
+    pub(crate) inner: Option<Inner<'input>>,
 }
 
 impl<'input> Container<'input> {
-    pub fn from_derive_input(input: &'input DeriveInput) -> Result<Self, syn::Error> {
+    pub(crate) fn from_derive_input(input: &'input DeriveInput) -> Result<Self, syn::Error> {
         let mut syrup_crate: Path = parse_quote! { ::syrup };
         let mut expecting = None;
         let mut name = input.ident.to_string();
@@ -118,7 +118,7 @@ impl<'input> Container<'input> {
         })
     }
 
-    pub fn expecting(&self) -> Result<Expr, syn::Error> {
+    pub(crate) fn expecting(&self) -> Result<Expr, syn::Error> {
         let name = &self.name;
         match &self.expecting {
             Some(msg) => Ok(parse_quote_spanned! { msg.span() => f.write_str(#msg) }),
@@ -164,7 +164,7 @@ impl<'input> Container<'input> {
         Ok((des_lifetime, des_generics, ser_generics))
     }
 
-    pub fn generate_deserialize_expr(
+    pub(crate) fn generate_deserialize_expr(
         &self,
         deserializer: &Ident,
         visitor: &Ident,
@@ -204,7 +204,7 @@ impl<'input> Container<'input> {
         }
     }
 
-    pub fn generate_serialize_expr(&self, serializer: &Ident) -> Result<Expr, syn::Error> {
+    pub(crate) fn generate_serialize_expr(&self, serializer: &Ident) -> Result<Expr, syn::Error> {
         match &self.into {
             Some(_) => errtodo!("serialize_with"),
             None => match &self.inner {

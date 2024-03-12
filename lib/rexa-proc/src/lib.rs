@@ -1,15 +1,10 @@
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::{format_ident, quote, quote_spanned, ToTokens, TokenStreamExt};
+use quote::{quote_spanned, ToTokens};
 use std::collections::HashMap;
 use syn::{
-    meta::ParseNestedMeta,
-    parse::{Parse, ParseBuffer},
-    parse_macro_input, parse_quote, parse_quote_spanned,
-    punctuated::Punctuated,
-    spanned::Spanned,
-    token, Arm, Attribute, Expr, ExprAssign, ExprField, ExprMethodCall, FnArg, ImplItemFn,
-    ItemImpl, LitBool, Pat, PatType, Path, Receiver, ReturnType, Signature, Token, Type,
-    TypeTraitObject,
+    parse::Parse, parse_macro_input, parse_quote, parse_quote_spanned, punctuated::Punctuated,
+    spanned::Spanned, Arm, Attribute, Expr, FnArg, ImplItemFn, ItemImpl, LitBool, Pat, PatType,
+    Path, ReturnType, Signature, Token, Type, TypeTraitObject,
 };
 
 // WARNING :: got way too "clever" with this one
@@ -41,9 +36,6 @@ macro_rules! format_error {
     ($span:expr => $($arg:tt)+) => {
         ::syn::parse::Error::new_spanned($span, ::std::format!($($arg)+))
     };
-    ($($arg:tt)+) => {
-        ::syn::parse::Error::new(::proc_macro2::Span::call_site(), ::std::format!($($arg)+))
-    };
 }
 
 /// Like [std::todo], but it expands to return a [syn::parse::Error] instead of panic.
@@ -51,16 +43,10 @@ macro_rules! todo {
     ($span:expr;) => {
         return ::std::result::Result::Err(format_error!($span => todo_str!()))
     };
-    () => {
-        return ::std::result::Result::Err(format_error!(todo_str!()))
-    };
     ($span:expr => $($arg:tt)+) => {
         return ::std::result::Result::Err(
                 format_error!($span => todo_str!("{}"), ::std::format!($($arg)+))
             )
-    };
-    ($($arg:tt)+) => {
-        todo!(::proc_macro2::Span::call_site() => $($arg)+)
     };
 }
 
@@ -68,11 +54,9 @@ macro_rules! error {
     ($span:expr => $($arg:tt)+) => {
         return Err(format_error!($span => $($arg)+))
     };
-    ($($arg:tt)+) => {
-        error!(::proc_macro2::Span::call_site() => $($arg)+)
-    };
 }
 
+#[allow(unused_macros)]
 macro_rules! tokens_error {
     ($tokens:expr, $span:expr => $($arg:tt)+) => {
         format_error!($span => $($arg)+).into_compile_error().to_tokens($tokens)
@@ -82,6 +66,7 @@ macro_rules! tokens_error {
     };
 }
 
+#[allow(unused_macros)]
 macro_rules! tokens_todo {
     ($tokens:expr, $span:expr => $($arg:tt)+) => {
         tokens_error!($tokens, $span => todo_str!("{}"), ::std::format!($($arg)+))
@@ -104,7 +89,7 @@ struct Metadata {
 }
 
 impl Parse for Metadata {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
         let args = Punctuated::<Ident, Token![,]>::parse_terminated(input)?;
         let rexa_crate = None;
         let syrup_crate = None;
@@ -126,15 +111,6 @@ enum DeliverInput {
     Args { span: Span },
     Resolver { span: Span },
     Syrup(PatType),
-}
-
-impl DeliverInput {
-    fn is_resolver(&self) -> bool {
-        match self {
-            Self::Resolver { .. } => true,
-            _ => false,
-        }
-    }
 }
 
 impl DeliverInput {
@@ -305,7 +281,7 @@ impl ToTokens for DeliverFn {
 
         match &resolution {
             DeliverResolution::Internal(internal) => {
-                call = parse_quote! { #call.map_err(From::from) }
+                call = parse_quote_spanned! {internal.span()=> #call.map_err(From::from) }
             }
             DeliverResolution::External(external) => {
                 let (ok_span, err_span) = match get_result_spans(true, &self.output) {
@@ -384,15 +360,23 @@ mod attr;
 use attr::*;
 
 enum ResolveExternal {
-    Normal { ok_map: Expr, err_map: Expr },
-    AlwaysFulfill { res_map: Expr },
-    AlwaysBreak { res_map: Expr },
+    Normal {
+        ok_map: Expr,
+        err_map: Expr,
+    },
+    AlwaysFulfill {
+        res_map: Expr,
+    },
+    #[allow(dead_code)]
+    AlwaysBreak {
+        res_map: Expr,
+    },
 }
 
 impl ResolveExternal {}
 
 impl From<Span> for ResolveExternal {
-    fn from(span: Span) -> Self {
+    fn from(_: Span) -> Self {
         Self::Normal {
             ok_map: parse_quote! { [&__ok] },
             err_map: parse_quote! { __err },
@@ -443,6 +427,7 @@ impl TryFrom<AttrOption> for DeliverResolution {
 }
 
 struct DeliverOutput {
+    #[allow(dead_code)]
     resolution: DeliverResolution,
 }
 
@@ -576,7 +561,7 @@ struct ObjectDef {
 }
 
 impl Parse for ObjectDef {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
         let mut base = ItemImpl::parse(input)?;
         let mut deliver_fallback = None;
         let mut deliver_fns = HashMap::new();

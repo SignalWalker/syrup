@@ -1,18 +1,12 @@
 use arti_client::TorClientConfig;
 use common::{initialize_tracing, LogFormat};
-use ed25519_dalek::VerifyingKey;
 use rexa::{
     async_compat::{AsyncRead, AsyncWrite},
     captp::{msg::DescImport, object::Object, AbstractCapTpSession, BootstrapEvent, CapTpSession},
     locator::SturdyRefLocator,
     netlayer::{onion::OnionNetlayer, Netlayer},
 };
-use std::{
-    env,
-    path::PathBuf,
-    process::{ExitStatus, Stdio},
-    sync::Arc,
-};
+use std::{env, path::PathBuf, process::Stdio, sync::Arc};
 use tokio::{process::Command, runtime::Runtime, sync::Notify, task::JoinSet};
 use tor_hsservice::{config::OnionServiceConfigBuilder, HsNickname};
 
@@ -140,7 +134,7 @@ where
         let event = session.recv_event().await?;
         tracing::debug!(?event, "received captp event");
         match event {
-            rexa::captp::Event::Bootstrap(BootstrapEvent::Fetch { swiss, resolver }) => {
+            rexa::captp::Event::Bootstrap(BootstrapEvent::Fetch { swiss, resolver: _ }) => {
                 match swiss.as_slice() {
                     ENLIVENER_SWISS => {
                         todo!()
@@ -168,7 +162,7 @@ impl Enlivener {
     // TODO :: figure out what kind of thing this is supposed to return
     async fn enliven<HKey, HVal>(
         &self,
-        locator: &SturdyRefLocator<HKey, HVal>,
+        _locator: &SturdyRefLocator<HKey, HVal>,
     ) -> Result<syrup::Item, Box<dyn std::error::Error + Send + Sync + 'static>> {
         todo!()
     }
@@ -176,7 +170,7 @@ impl Enlivener {
 impl Object for Enlivener {
     fn deliver_only(
         &self,
-        session: &(dyn AbstractCapTpSession + Sync),
+        _session: &(dyn AbstractCapTpSession + Sync),
         _: Vec<syrup::Item>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         Err("enlivener doesn't accept op:deliver-only".into())
@@ -184,7 +178,7 @@ impl Object for Enlivener {
 
     fn deliver<'s>(
         &'s self,
-        session: &(dyn AbstractCapTpSession + Sync),
+        _session: &(dyn AbstractCapTpSession + Sync),
         args: Vec<syrup::Item>,
         resolver: rexa::captp::GenericResolver,
     ) -> futures::future::BoxFuture<

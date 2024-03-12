@@ -1,5 +1,4 @@
 use super::RemoteObject;
-use crate::async_compat::AsyncWrite;
 use crate::captp::CapTpDeliver;
 use crate::captp::{
     msg::{DescHandoffReceive, DescImport},

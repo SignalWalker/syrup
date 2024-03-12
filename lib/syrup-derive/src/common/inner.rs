@@ -3,13 +3,14 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{parse_quote, Expr, Generics, Ident, Lifetime, Path};
 
-pub enum Inner<'input> {
+pub(crate) enum Inner<'input> {
+    #[allow(dead_code)]
     Variants(()),
     Fields(Vec<Field<'input>>),
 }
 
 impl<'input> Inner<'input> {
-    pub fn from_fields(
+    pub(crate) fn from_fields(
         syrup: &Path,
         fields: impl IntoIterator<Item = &'input syn::Field>,
         c_ser_generics: &Generics,
@@ -30,7 +31,7 @@ impl<'input> Inner<'input> {
         Ok(Self::Fields(res))
     }
 
-    pub fn generate_deserialize_expr(
+    pub(crate) fn generate_deserialize_expr(
         &self,
         container: &Container<'_>,
         deserializer: &Ident,
@@ -74,7 +75,7 @@ impl<'input> Inner<'input> {
         }
     }
 
-    pub fn generate_serialize_expr(
+    pub(crate) fn generate_serialize_expr(
         &self,
         container: &Container<'_>,
         serializer: &Ident,

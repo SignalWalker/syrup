@@ -1,13 +1,13 @@
 use syn::{Expr, Path, Type};
 
 #[derive(Clone)]
-pub enum Conversion {
+pub(crate) enum Conversion {
     Infallible(Type),
     Fallible(Type),
 }
 
 #[derive(Clone)]
-pub enum With {
+pub(crate) enum With {
     Conversion(Conversion),
     Custom(Path),
     Verbatim(Expr),
@@ -16,11 +16,11 @@ pub enum With {
 
 impl With {
     #[inline]
-    pub fn infallible(ty: Type) -> Self {
+    pub(crate) fn infallible(ty: Type) -> Self {
         Self::Conversion(Conversion::Infallible(ty))
     }
     #[inline]
-    pub fn fallible(ty: Type) -> Self {
+    pub(crate) fn fallible(ty: Type) -> Self {
         Self::Conversion(Conversion::Fallible(ty))
     }
 }

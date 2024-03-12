@@ -3,7 +3,7 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{parse_quote, DeriveInput, GenericParam, LifetimeParam, TypeTuple};
 
-pub fn generate_deserialize(input: &DeriveInput) -> Result<TokenStream, syn::Error> {
+pub(crate) fn generate_deserialize(input: &DeriveInput) -> Result<TokenStream, syn::Error> {
     let container = Container::from_derive_input(input)?;
     let syrup = &container.syrup_crate;
     let ident = container.ident;

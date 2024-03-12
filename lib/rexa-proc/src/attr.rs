@@ -5,8 +5,7 @@ use quote::{ToTokens, TokenStreamExt};
 use syn::{
     parse::{discouraged::Speculative, Parse},
     punctuated::Punctuated,
-    spanned::Spanned,
-    token, Attribute, Ident, LitBool, Token,
+    Attribute, Ident, LitBool, Token,
 };
 
 pub(crate) struct AttrFlag {
@@ -16,7 +15,7 @@ pub(crate) struct AttrFlag {
 }
 
 impl Parse for AttrFlag {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
         let ident = input.parse::<Ident>()?;
         let (eq, value) = {
             if let Ok(eq) = input.parse::<Token![=]>() {
@@ -51,7 +50,7 @@ pub(crate) struct AttrOptionSet {
 }
 
 impl Parse for AttrOptionSet {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
         Ok(Self {
             ident: input.parse()?,
             options: {
@@ -79,6 +78,7 @@ impl AttrOptionSet {
             .unwrap_or_else(|| Ok(T::from(span)))
     }
 
+    #[allow(dead_code)]
     pub(crate) fn remove<T: TryFrom<AttrOption, Error = syn::Error>>(
         &mut self,
         key: &str,
@@ -105,6 +105,7 @@ impl AttrOptionSet {
         self.try_remove_or(key, || Ok(LitBool::new(default, span)))
     }
 
+    #[allow(dead_code)]
     pub(crate) fn remove_set<T: TryFrom<AttrOptionSet, Error = syn::Error>>(
         &mut self,
         key: &str,
@@ -190,7 +191,7 @@ impl ToTokens for AttrOption {
 }
 
 impl Parse for AttrOption {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
         // TODO :: is there a better way to do this...?
         let fork = input.fork();
         if let Ok(set) = fork.parse() {

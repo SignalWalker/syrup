@@ -1,11 +1,7 @@
 //! - [Draft Specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Netlayers.md)
 
-use crate::{
-    captp::{AbstractCapTpSession, CapTpSession},
-    locator::NodeLocator,
-};
-use futures::future::BoxFuture;
-use std::{future::Future, sync::Arc};
+use crate::{captp::CapTpSession, locator::NodeLocator};
+use std::future::Future;
 use syrup::Serialize;
 
 #[cfg(feature = "netlayer-datastream")]

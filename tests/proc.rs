@@ -18,14 +18,17 @@ where
     }
 
     #[deliver()]
-    fn test_session(&self, session: &(dyn AbstractCapTpSession + Sync)) -> Result<u64, String> {
+    fn test_session(
+        &self,
+        #[arg(session)] _session: &(dyn AbstractCapTpSession + Sync),
+    ) -> Result<u64, String> {
         todo!()
     }
 
     #[deliver_only(fallback)]
     fn deliver_only_fallback(
         &self,
-        args: Vec<syrup::Item>,
+        _args: Vec<syrup::Item>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         todo!()
     }

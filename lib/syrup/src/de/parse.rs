@@ -29,6 +29,7 @@ pub fn parse_ubig<'i, E: ParseError<&'i [u8]>>(i: &'i [u8]) -> IResult<&'i [u8],
     nchar::digit1
         .map(|b| {
             UBig::from_str_radix(
+                #[allow(unsafe_code)]
                 unsafe {
                     // we already know this is a sequence of ascii digits
                     std::str::from_utf8_unchecked(b)
@@ -101,6 +102,7 @@ pub fn parse_byte_obj<'i, E: ParseError<&'i [u8]>>(i: &'i [u8]) -> IResult<&'i [
 }
 
 pub fn parse_str<'i, E: ParseError<&'i [u8]>>(i: &'i [u8]) -> IResult<&'i [u8], &'i str, E> {
+    // FIX :: this use of from_utf8_unchecked is probably incorrect
     parse_netstring('"', bytes::take)
         .map(|b| unsafe { std::str::from_utf8_unchecked(b) })
         .parse(i)
@@ -117,6 +119,7 @@ pub fn parse_char<'i, E: ParseError<&'i [u8]>>(i: &'i [u8]) -> IResult<&'i [u8],
 pub fn parse_symbol<'i, E: ParseError<&'i [u8]>>(
     i: &'i [u8],
 ) -> IResult<&'i [u8], Symbol<&'i str>, E> {
+    // FIX :: this use of from_utf8_unchecked is probably incorrect
     parse_netstring('\'', bytes::take)
         .map(|b| Symbol(unsafe { std::str::from_utf8_unchecked(b) }))
         .parse(i)

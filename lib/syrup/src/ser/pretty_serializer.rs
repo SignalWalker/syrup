@@ -3,7 +3,6 @@ use crate::{
     ser::{SerializeDict, SerializeRecord, SerializeSeq, SerializeSet, Serializer},
     Error, Serialize,
 };
-use ibig::UBig;
 
 pub struct PrettySerializer {
     pub res: String,
@@ -235,6 +234,7 @@ impl<'ser> Serializer for &'ser mut PrettySerializer {
         Ok(PrettySetSerializer::new(self, len))
     }
 
+    #[allow(unsafe_code)]
     unsafe fn serialize_raw(self, data: &[u8]) -> Result<Self::Ok, Self::Error> {
         match from_bytes::<crate::Item>(data) {
             Ok(item) => self.res.push_str(&to_pretty(&item)?),

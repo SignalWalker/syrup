@@ -94,6 +94,7 @@ pub trait Serializer {
     /// # Safety
     ///
     /// Input must be valid Syrup data.
+    #[allow(unsafe_code)]
     unsafe fn serialize_raw(self, data: &[u8]) -> Result<Self::Ok, Self::Error>;
 }
 

@@ -82,6 +82,7 @@ pub fn impl_serialize_for_tuple(max_arity: proc_macro::TokenStream) -> proc_macr
         let serializes = (0..arity)
             .into_iter()
             .map(|index| {
+                let index = syn::Index::from(index);
                 quote! { &self.#index }
             })
             .collect::<Vec<_>>();

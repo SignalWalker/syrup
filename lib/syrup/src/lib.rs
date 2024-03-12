@@ -16,8 +16,8 @@ pub use error::*;
 mod syrup_types;
 pub use syrup_types::*;
 
-#[cfg(feature = "async-stream")]
-pub mod async_stream;
+// #[cfg(feature = "async-stream")]
+// pub mod async_stream;
 
 #[macro_export]
 macro_rules! record_struct {

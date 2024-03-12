@@ -1,5 +1,5 @@
 use super::Error;
-use std::{marker::PhantomData, num::NonZeroUsize};
+use std::marker::PhantomData;
 
 mod impl_deserialize;
 
@@ -12,8 +12,8 @@ pub use byte_deserializer::*;
 mod visitor;
 pub use visitor::*;
 
-mod stream;
-pub use stream::*;
+// mod stream;
+// pub use stream::*;
 
 pub use nom::Needed;
 
