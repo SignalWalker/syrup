@@ -130,6 +130,7 @@ impl AttrOptionSet {
     }
 
     pub(crate) fn into_unrecognized_err(self) -> syn::Result<()> {
+        #[warn(clippy::never_loop)]
         for opt in self.options.values() {
             error!(opt => "unrecognized attribute option");
         }

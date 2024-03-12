@@ -37,3 +37,6 @@ default = ["extra-ed25519"]
 async-stream = ["dep:futures"]
 # serde = ["dep:serde"]
 extra-ed25519 = ["dep:ed25519-dalek"]
+
+[lints]
+workspace = true
