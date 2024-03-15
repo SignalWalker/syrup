@@ -159,8 +159,8 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
     }
 
     pub(super) fn export(&self, val: Arc<dyn crate::captp::object::Object + Send + Sync>) -> u64 {
-        let pos = self.exports.push(val);
-        tracing::trace!(pos, "exporting object");
+        let pos = self.exports.push(val.clone());
+        val.exported(&self.remote_vkey, pos.into());
         pos
     }
 
@@ -248,7 +248,7 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
                         // };
                         // break Ok(Event::Delivery(del));
                         match self.exports.get(&pos) {
-                            Some(obj) => obj.deliver_only(&*self, del.args).unwrap(),
+                            Some(obj) => obj.deliver_only(self.clone(), del.args).unwrap(),
                             None => break Err(RecvError::UnknownTarget(pos, del.args)),
                         }
                     }
@@ -276,7 +276,7 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
                         match self.exports.get(&pos) {
                             Some(obj) => obj
                                 .deliver(
-                                    &*self,
+                                    self.clone(),
                                     del.args,
                                     crate::captp::GenericResolver::new(
                                         self.clone(),

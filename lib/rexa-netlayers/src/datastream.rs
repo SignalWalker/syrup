@@ -1,16 +1,21 @@
-use super::Netlayer;
-use crate::{
+use rexa::{
     async_compat::RwLock,
     captp::{CapTpSession, CapTpSessionManager},
     locator::NodeLocator,
+    netlayer::Netlayer,
 };
 use std::future::Future;
 use syrup::Serialize;
 
-#[cfg(feature = "tokio")]
-mod tokio_extras;
-#[cfg(feature = "tokio")]
-pub use tokio_extras::*;
+#[cfg(feature = "datastream-tcp")]
+mod tcp;
+#[cfg(feature = "datastream-tcp")]
+pub use tcp::*;
+
+#[cfg(all(feature = "datastream-unix", target_family = "unix"))]
+mod unix;
+#[cfg(all(feature = "datastream-unix", target_family = "unix"))]
+pub use unix::*;
 
 pub trait AsyncStreamListener: Sized {
     const TRANSPORT: &'static str;
@@ -64,9 +69,8 @@ impl<Listener: AsyncStreamListener> Netlayer for DataStreamNetlayer<Listener>
 where
     Listener::Stream: AsyncDataStream,
     Listener::Error: std::error::Error,
-    <Listener::Stream as AsyncDataStream>::ReadHalf: crate::async_compat::AsyncRead + Unpin + Send,
-    <Listener::Stream as AsyncDataStream>::WriteHalf:
-        crate::async_compat::AsyncWrite + Unpin + Send,
+    <Listener::Stream as AsyncDataStream>::ReadHalf: rexa::async_compat::AsyncRead + Unpin + Send,
+    <Listener::Stream as AsyncDataStream>::WriteHalf: rexa::async_compat::AsyncWrite + Unpin + Send,
     <Listener::Stream as AsyncDataStream>::Error: std::error::Error,
     Self: Sync,
 {

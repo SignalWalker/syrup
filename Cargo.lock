@@ -2315,22 +2315,37 @@ source = "git+https://gitlab.torproject.org/tpo/core/arti#0f343beefd3bdc8e4faa9d
 name = "rexa"
 version = "0.1.0"
 dependencies = [
- "arti-client",
  "dashmap",
  "ed25519-dalek",
  "futures",
  "lazy_static",
+ "parking_lot",
  "rand",
  "rexa-proc",
  "syrup",
  "thiserror",
  "time",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "rexa-netlayers"
+version = "0.1.0"
+dependencies = [
+ "arti-client",
+ "futures",
+ "lazy_static",
+ "parking_lot",
+ "rexa",
+ "syrup",
+ "thiserror",
+ "tokio",
  "tor-cell",
  "tor-hsservice",
  "tor-rtcompat",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -3037,6 +3052,7 @@ dependencies = [
  "libc",
  "mio",
  "num_cpus",
+ "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",

@@ -1,5 +1,5 @@
 use super::{
-    msg::OpAbort,
+    msg::{DescExport, OpAbort},
     object::{RemoteBootstrap, RemoteObject},
 };
 use crate::async_compat::{AsyncRead, AsyncWrite};
@@ -11,9 +11,6 @@ pub use builder::*;
 
 mod core;
 use core::*;
-
-// mod message_queue;
-// pub use message_queue::*;
 
 mod manager;
 pub use manager::*;
@@ -38,6 +35,8 @@ pub use event::*;
 
 mod traits;
 pub use traits::*;
+
+pub type RemoteKey = VerifyingKey;
 
 pub struct CapTpSession<Reader, Writer> {
     base: Arc<CapTpSessionInternal<Reader, Writer>>,
@@ -95,7 +94,7 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
         &self.base.signing_key
     }
 
-    pub fn remote_vkey(&self) -> &VerifyingKey {
+    pub fn remote_vkey(&self) -> &RemoteKey {
         &self.base.remote_vkey
     }
 
@@ -116,7 +115,7 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
         res
     }
 
-    pub fn into_remote_object(self, position: u64) -> Option<RemoteObject>
+    pub fn into_remote_object(self, position: DescExport) -> Option<RemoteObject>
     where
         Reader: Send + 'static,
         Writer: AsyncWrite + Send + Unpin + 'static,
@@ -131,10 +130,6 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
     {
         RemoteBootstrap::new(self.base.clone())
     }
-
-    // pub fn gen_export(&self) -> ObjectInbox<Socket> {
-    //     self.base.clone().gen_export()
-    // }
 
     pub fn event_stream<'s>(
         &'s self,

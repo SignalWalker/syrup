@@ -1,10 +1,10 @@
-use super::Netlayer;
-use crate::{
-    captp::{CapTpSession, CapTpSessionManager},
-    locator::NodeLocator,
-};
 use arti_client::{DataReader, DataWriter, TorClient, TorClientConfig};
 use futures::{lock::Mutex, stream::BoxStream, StreamExt};
+use rexa::{
+    captp::{CapTpSession, CapTpSessionManager},
+    locator::NodeLocator,
+    netlayer::Netlayer,
+};
 use std::future::Future;
 use std::sync::Arc;
 use tor_cell::relaycell::msg::Connected;
@@ -13,6 +13,29 @@ use tor_rtcompat::Runtime;
 
 #[cfg(feature = "tokio")]
 use tokio::sync::RwLock;
+
+#[repr(transparent)]
+struct TorLocator<'l, HKey, HVal>(&'l NodeLocator<HKey, HVal>);
+
+impl<'l, HKey, HVal> From<&'l NodeLocator<HKey, HVal>> for TorLocator<'l, HKey, HVal> {
+    fn from(value: &'l NodeLocator<HKey, HVal>) -> Self {
+        Self(value)
+    }
+}
+
+impl<'l, HKey, HVal> AsRef<NodeLocator<HKey, HVal>> for TorLocator<'l, HKey, HVal> {
+    fn as_ref(&self) -> &NodeLocator<HKey, HVal> {
+        self.0
+    }
+}
+
+impl<'l, HKey, HVal> arti_client::IntoTorAddr for TorLocator<'l, HKey, HVal> {
+    fn into_tor_addr(self) -> Result<arti_client::TorAddr, arti_client::TorAddrError> {
+        format!("{}.onion", self.0.designator)
+            .as_str()
+            .into_tor_addr()
+    }
+}
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -93,7 +116,11 @@ impl<R: Runtime> Netlayer for OnionNetlayer<R> {
     {
         let local_locator = self.locator::<String, String>();
         async move {
-            let (reader, writer) = self.client.connect(locator).await?.split();
+            let (reader, writer) = self
+                .client
+                .connect(TorLocator::from(locator))
+                .await?
+                .split();
             self.manager
                 .write()
                 .await

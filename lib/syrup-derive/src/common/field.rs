@@ -240,7 +240,7 @@ impl<'input> Field<'input> {
                         }
                         type_stack.push(&*r.elem);
                     }
-                    Type::Slice(_) => todo!("extract generics from slice type"),
+                    Type::Slice(slice) => type_stack.push(&*slice.elem),
                     Type::TraitObject(_) => todo!("extract generics from trait object"),
                     Type::Tuple(_) => todo!("extract generics from tuple"),
                     Type::Verbatim(_) => todo!("extract generics from verbatim"),

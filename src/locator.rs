@@ -3,10 +3,6 @@
 use std::collections::HashMap;
 use syrup::{Deserialize, Serialize};
 
-/// Onion-specific extensions to the locator module.
-#[cfg(feature = "netlayer-onion")]
-mod onion;
-
 /// An identifier for a single OCapN node.
 ///
 /// From the [draft specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Locators.md):

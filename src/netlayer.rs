@@ -4,15 +4,6 @@ use crate::{captp::CapTpSession, locator::NodeLocator};
 use std::future::Future;
 use syrup::Serialize;
 
-#[cfg(feature = "netlayer-datastream")]
-pub mod datastream;
-
-#[cfg(feature = "netlayer-mock")]
-pub mod mock;
-
-#[cfg(feature = "netlayer-onion")]
-pub mod onion;
-
 pub trait Netlayer {
     type Reader;
     type Writer;

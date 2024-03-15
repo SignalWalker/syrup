@@ -1,112 +1,144 @@
-use super::{
-    msg::DescImport, AbstractCapTpSession, CapTpDeliver, Delivery, GenericResolver, SendError,
-};
-use crate::async_compat::oneshot;
-use futures::future::BoxFuture;
 use std::sync::Arc;
-use syrup::{Serialize, Symbol};
+
+use ed25519_dalek::VerifyingKey;
+use futures::future::BoxFuture;
+use syrup::{RawSyrup, Serialize};
+
+use super::{
+    msg::{DescExport, DescImport},
+    AbstractCapTpSession, CapTpDeliver, Delivery, GenericResolver, SendError,
+};
+use crate::async_compat::{mpsc, oneshot, OneshotRecvError};
 
 mod bootstrap;
 pub use bootstrap::*;
 
 /// Sending half of an object pipe.
-pub type DeliverySender = futures::channel::mpsc::UnboundedSender<Delivery>;
+pub type DeliverySender = mpsc::UnboundedSender<Delivery>;
 /// Receiving half of an object pipe.
-pub type DeliveryReceiver = futures::channel::mpsc::UnboundedReceiver<Delivery>;
+pub type DeliveryReceiver = mpsc::UnboundedReceiver<Delivery>;
+
+/// Returned by [Object::deliver_only]
+pub enum ObjectOnlyError {}
+
+/// Returned by [`Object`] functions.
+#[derive(Debug, thiserror::Error)]
+pub enum ObjectError {
+    // #[error(transparent)]
+    // Send(#[from] SendError),
+    #[error(transparent)]
+    Deliver(#[from] DeliverError),
+    #[error(transparent)]
+    DeliverOnly(#[from] DeliverOnlyError),
+    #[error("missing argument at position {position}: {expected}")]
+    MissingArgument {
+        position: usize,
+        expected: &'static str,
+    },
+    #[error("expected {expected} at position {position}, received: {received:?}")]
+    UnexpectedArgument {
+        expected: &'static str,
+        position: usize,
+        received: syrup::Item,
+    },
+}
+
+impl ObjectError {
+    pub fn missing(position: usize, expected: &'static str) -> Self {
+        Self::MissingArgument { position, expected }
+    }
+
+    pub fn unexpected(expected: &'static str, position: usize, received: syrup::Item) -> Self {
+        Self::UnexpectedArgument {
+            expected,
+            position,
+            received,
+        }
+    }
+}
 
 pub trait Object {
     // TODO :: Better error type
     fn deliver_only(
         &self,
-        session: &(dyn AbstractCapTpSession + Sync),
+        session: Arc<dyn AbstractCapTpSession + Send + Sync>,
         args: Vec<syrup::Item>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>>;
+    ) -> Result<(), ObjectError>;
+
     // TODO :: Better error type
     fn deliver<'result>(
         &'result self,
-        session: &'result (dyn AbstractCapTpSession + Sync),
+        session: Arc<dyn AbstractCapTpSession + Send + Sync>,
         args: Vec<syrup::Item>,
         resolver: GenericResolver,
-    ) -> BoxFuture<'result, Result<(), Box<dyn std::error::Error + Send + Sync + 'static>>>;
+    ) -> BoxFuture<'result, Result<(), ObjectError>>;
+
+    /// Called when this object is exported. By default, does nothing.
+    #[allow(unused_variables)]
+    fn exported(&self, remote_key: &VerifyingKey, position: DescExport) {}
 }
 
-// pub trait Object {
-//     fn deliver_only(&self, args: Vec<syrup::Item>);
-//     // fn deliver(&self, args: Vec<syrup::Item>);
+// /// An object to which the answer to a Promise may be sent.
+// pub struct RemoteResolver {
+//     base: RemoteObject,
 // }
-
-// pub trait RemoteObject {
-//     async fn deliver_only<Arg: Serialize>(self: Arc<Self>, ident: &str, args: Vec<Arg>);
-//     async fn deliver<Arg: Serialize>(self: Arc<Self>, ident: &str, args: Vec<Arg>);
+//
+// impl RemoteResolver {
+//     pub async fn fulfill<'arg, Arg: Serialize + 'arg>(
+//         &self,
+//         args: impl IntoIterator<Item = &'arg Arg>,
+//         answer_pos: Option<u64>,
+//         resolve_me_desc: DescImport,
+//     ) -> Result<(), SendError> {
+//         self.base
+//             .call("fulfill", args, answer_pos, resolve_me_desc)
+//             .await
+//     }
+//
+//     pub async fn break_promise(&self, error: impl Serialize) -> Result<(), SendError> {
+//         self.base.call_only("break", &[error]).await
+//     }
 // }
-
-/// An object to which the answer to a Promise may be sent.
-pub struct RemoteResolver {
-    base: RemoteObject,
-}
-
-impl RemoteResolver {
-    pub async fn fulfill<'arg, Arg: Serialize + 'arg>(
-        &self,
-        args: impl IntoIterator<Item = &'arg Arg>,
-        answer_pos: Option<u64>,
-        resolve_me_desc: DescImport,
-    ) -> Result<(), SendError> {
-        self.base
-            .call("fulfill", args, answer_pos, resolve_me_desc)
-            .await
-    }
-
-    pub async fn break_promise(&self, error: impl Serialize) -> Result<(), SendError> {
-        self.base.call_only("break", &[error]).await
-    }
-}
 
 pub type PromiseResult = Result<Vec<syrup::Item>, syrup::Item>;
 pub type PromiseSender = oneshot::Sender<PromiseResult>;
 pub type PromiseReceiver = oneshot::Receiver<PromiseResult>;
 
 pub struct Resolver {
-    sender: std::sync::Mutex<Option<PromiseSender>>,
+    sender: parking_lot::Mutex<Option<PromiseSender>>,
 }
 
-// TODO :: convert this to #[impl_object]
-impl Object for Resolver {
-    fn deliver_only(
+impl Resolver {
+    fn resolve(&self, res: PromiseResult) -> Result<(), PromiseResult> {
+        let Some(sender) = self.sender.lock().take() else {
+            return Err(res);
+        };
+        sender.send(res)
+    }
+}
+
+#[crate::impl_object(rexa = crate, tracing = ::tracing)]
+impl Resolver {
+    #[deliver()]
+    fn fulfill<'item>(
         &self,
-        _session: &(dyn AbstractCapTpSession + Sync),
-        _args: Vec<syrup::Item>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        todo!()
+        #[arg(args)] args: Vec<syrup::Item>,
+    ) -> Result<&'static str, &'static str> {
+        match self.resolve(Ok(args)) {
+            Ok(_) => Ok("promise fulfilled"),
+            Err(_) => Err("promise already resolved"),
+        }
     }
 
-    fn deliver<'s>(
-        &'s self,
-        _: &(dyn AbstractCapTpSession + Sync),
-        args: Vec<syrup::Item>,
-        _: GenericResolver,
-    ) -> BoxFuture<'s, Result<(), Box<dyn std::error::Error + Send + Sync + 'static>>> {
-        use futures::FutureExt;
-        async move {
-            let sender = match self.sender.lock().unwrap().take() {
-                Some(s) => s,
-                None => return Err("broken promise pipe".into()),
-            };
-            let mut args = args.into_iter();
-            match args.next() {
-                Some(syrup::Item::Symbol(id)) => match id.as_str() {
-                    "fulfill" => sender.send(Ok(args.collect())).unwrap(),
-                    "break" => match args.next() {
-                        Some(reason) => sender.send(Err(reason)).unwrap(),
-                        _ => todo!(),
-                    },
-                    _ => todo!(),
-                },
-                _ => todo!(),
-            }
-            Ok(())
+    #[deliver(symbol = "break")]
+    fn break_promise(
+        &self,
+        #[arg(syrup = arg)] reason: syrup::Item,
+    ) -> Result<&'static str, &'static str> {
+        match self.resolve(Err(reason)) {
+            Ok(_) => Ok("promise broken"),
+            Err(_) => Err("promise already resolved"),
         }
-        .boxed()
     }
 }
 
@@ -138,9 +170,29 @@ impl std::future::Future for Answer {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum DeliverOnlyError {
+    #[error(transparent)]
+    Serialize(#[from] syrup::Error<'static>),
+    #[error(transparent)]
+    Send(#[from] SendError),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DeliverError {
+    #[error(transparent)]
+    Serialize(#[from] syrup::Error<'static>),
+    #[error(transparent)]
+    Send(#[from] SendError),
+    #[error(transparent)]
+    Recv(#[from] OneshotRecvError),
+    #[error("promise broken, reason: {0:?}")]
+    Broken(syrup::Item),
+}
+
 #[derive(Clone)]
 pub struct RemoteObject {
-    position: u64,
+    position: DescExport,
     session: Arc<dyn CapTpDeliver + Send + Sync + 'static>,
 }
 
@@ -155,90 +207,111 @@ impl std::fmt::Debug for RemoteObject {
 impl RemoteObject {
     pub(crate) fn new(
         session: Arc<dyn CapTpDeliver + Send + Sync + 'static>,
-        position: u64,
+        position: DescExport,
     ) -> Self {
         Self { session, position }
     }
 
-    pub async fn deliver_only<Arg: Serialize>(&self, args: Vec<Arg>) -> Result<(), SendError> {
-        self.session
-            .deliver_only(
-                self.position,
-                args.iter()
-                    .map(syrup::RawSyrup::from_serialize)
-                    .collect::<Vec<_>>(),
-            )
-            .await
+    pub async fn deliver_only_serialized(&self, args: &[syrup::RawSyrup]) -> Result<(), SendError> {
+        self.session.deliver_only(self.position, args).await
     }
 
-    pub async fn deliver<Arg: Serialize>(
+    pub async fn deliver_only<'arg, Arg: Serialize + ?Sized + 'arg>(
         &self,
-        args: Vec<Arg>,
+        args: impl IntoIterator<Item = &'arg Arg>,
+    ) -> Result<(), DeliverOnlyError> {
+        self.deliver_only_serialized(&RawSyrup::vec_from_iter(args.into_iter())?)
+            .await
+            .map_err(From::from)
+    }
+
+    pub async fn deliver_serialized(
+        &self,
+        args: &[syrup::RawSyrup],
         answer_pos: Option<u64>,
         resolve_me_desc: DescImport,
     ) -> Result<(), SendError> {
         self.session
-            .deliver(
-                self.position,
-                args.iter()
-                    .map(syrup::RawSyrup::from_serialize)
-                    .collect::<Vec<_>>(),
-                answer_pos,
-                resolve_me_desc,
-            )
+            .deliver(self.position, args, answer_pos, resolve_me_desc)
             .await
     }
 
-    pub async fn deliver_and<Arg: Serialize>(&self, args: Vec<Arg>) -> Result<Answer, SendError> {
-        self.session
-            .deliver_and(
-                self.position,
-                args.iter()
-                    .map(syrup::RawSyrup::from_serialize)
-                    .collect::<Vec<_>>(),
-            )
-            .await
-    }
-
-    pub async fn call_only<'arg, Arg: Serialize + 'arg>(
+    pub async fn deliver<'arg, Arg: Serialize + ?Sized + 'arg>(
         &self,
-        ident: impl AsRef<str>,
-        args: impl IntoIterator<Item = &'arg Arg>,
-    ) -> Result<(), SendError> {
-        self.deliver_only(syrup::raw_syrup_unwrap![&Symbol(ident.as_ref()); args])
-            .await
-    }
-
-    pub async fn call<'arg, Arg: Serialize + 'arg>(
-        &self,
-        ident: impl AsRef<str>,
         args: impl IntoIterator<Item = &'arg Arg>,
         answer_pos: Option<u64>,
         resolve_me_desc: DescImport,
-    ) -> Result<(), SendError> {
-        self.deliver(
-            syrup::raw_syrup_unwrap![&Symbol(ident.as_ref()); args],
+    ) -> Result<(), DeliverError> {
+        self.deliver_serialized(
+            &RawSyrup::vec_from_iter(args.into_iter())?,
             answer_pos,
             resolve_me_desc,
         )
         .await
+        .map_err(From::from)
     }
 
-    pub async fn call_and<'arg, Arg: Serialize + 'arg>(
+    pub async fn deliver_and_serialized(
+        &self,
+        args: &[RawSyrup],
+    ) -> Result<Vec<syrup::Item>, DeliverError> {
+        self.session.deliver_and(self.position, args).await
+    }
+
+    pub async fn deliver_and<'arg, Arg: Serialize + ?Sized + 'arg>(
+        &self,
+        args: impl IntoIterator<Item = &'arg Arg>,
+    ) -> Result<Vec<syrup::Item>, DeliverError> {
+        self.deliver_and_serialized(
+            &args
+                .into_iter()
+                .map(syrup::RawSyrup::from_serialize)
+                .collect::<Vec<_>>(),
+        )
+        .await
+    }
+
+    pub async fn call_only<'arg, Arg: Serialize + ?Sized + 'arg>(
         &self,
         ident: impl AsRef<str>,
         args: impl IntoIterator<Item = &'arg Arg>,
-    ) -> Result<Answer, SendError> {
-        self.deliver_and(syrup::raw_syrup_unwrap![&Symbol(ident.as_ref()); args])
+    ) -> Result<(), DeliverOnlyError> {
+        self.deliver_only_serialized(&RawSyrup::vec_from_ident_iter(ident, args.into_iter())?)
+            .await
+            .map_err(From::from)
+    }
+
+    pub async fn call<'arg, Arg: Serialize + ?Sized + 'arg>(
+        &self,
+        ident: impl AsRef<str>,
+        args: impl IntoIterator<Item = &'arg Arg>,
+        answer_pos: Option<u64>,
+        resolve_me_desc: DescImport,
+    ) -> Result<(), DeliverError> {
+        self.deliver_serialized(
+            &RawSyrup::vec_from_ident_iter(ident, args.into_iter())?,
+            answer_pos,
+            resolve_me_desc,
+        )
+        .await
+        .map_err(From::from)
+    }
+
+    pub async fn call_and<'arg, Arg: Serialize + ?Sized + 'arg>(
+        &self,
+        ident: impl AsRef<str>,
+        args: impl IntoIterator<Item = &'arg Arg>,
+    ) -> Result<Vec<syrup::Item>, DeliverError> {
+        self.deliver_and_serialized(&RawSyrup::vec_from_ident_iter(ident, args.into_iter())?)
             .await
     }
 
-    pub fn get_remote_object(&self, position: u64) -> Option<RemoteObject> {
+    pub fn get_remote_object(&self, position: DescExport) -> Option<RemoteObject> {
         self.session.clone().into_remote_object(position)
     }
 
     #[allow(unsafe_code)]
-    pub unsafe fn get_remote_object_unchecked(&self, position: u64) -> RemoteObject {
+    pub unsafe fn get_remote_object_unchecked(&self, position: DescExport) -> RemoteObject {
         unsafe { self.session.clone().into_remote_object_unchecked(position) }
     }
 }

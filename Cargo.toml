@@ -28,20 +28,26 @@ categories = [
 ]
 keywords = ["ocap", "ocapn", "object-capabilities"]
 
+[workspace.dependencies]
+thiserror = "^1.0"
+tracing = "^0.1"
+futures = "^0.3"
+parking_lot = "^0.12"
 
 [dependencies]
 rexa-proc = { path = "./lib/rexa-proc" }
 
 # meta
-thiserror = "^1.0"
-tracing = "^0.1"
+thiserror.workspace = true
+tracing.workspace = true
 
-
-futures = { version = "^0.3" }
+futures.workspace = true
 tokio = { version = "^1.36", optional = true, default-features = false, features = [
   "io-util",
   "sync",
+  "parking_lot",
 ] }
+parking_lot.workspace = true
 
 # captp
 dashmap = { version = "^5" }
@@ -57,15 +63,6 @@ syrup = { path = "lib/syrup" }
 
 # netlayers
 # netlayer-mock
-lazy_static = { version = "^1.4", optional = true }
-## netlayer-onion
-arti-client = { version = "^0.14", git = "https://gitlab.torproject.org/tpo/core/arti", features = [
-  "onion-service-client",
-  "onion-service-service",
-], optional = true }
-tor-rtcompat = { version = "^0.10", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
-tor-hsservice = { version = "^0.8", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
-tor-cell = { version = "^0.16", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
 
 [dev-dependencies]
 lazy_static = { version = "^1.4" }
@@ -84,15 +81,7 @@ time = { version = "^0.3", features = ["formatting", "local-offset", "macros"] }
 [features]
 default = ["extra-diagnostics"]
 extra-diagnostics = []
-tokio = ["dep:tokio", "tor-rtcompat?/tokio"]
-netlayer-mock = ["dep:lazy_static"]
-netlayer-datastream = ["tokio?/net"]
-netlayer-onion = [
-  "dep:arti-client",
-  "dep:tor-rtcompat",
-  "dep:tor-hsservice",
-  "dep:tor-cell",
-]
+tokio = ["dep:tokio"]
 test-deps = ["tokio", "tokio/rt-multi-thread", "tokio/process", "tokio/macros"]
 
 
@@ -114,12 +103,12 @@ workspace = true
 [workspace.lints.rust]
 rust_2024_compatibility = "warn"
 let_underscore = "warn"
-fuzzy_provenance_casts = "warn"
-lossy_provenance_casts = "warn"
+# fuzzy_provenance_casts = "warn" # unstable
+# lossy_provenance_casts = "warn" # unstable
 meta_variable_misuse = "warn"
 missing_abi = "warn"
-multiple_supertrait_upcastable = "warn"
-must_not_suspend = "deny"
+# multiple_supertrait_upcastable = "warn" # unstable
+# must_not_suspend = "deny" # unstable
 unreachable_pub = "warn"
 unsafe_code = "warn"
 unsafe_op_in_unsafe_fn = "warn"

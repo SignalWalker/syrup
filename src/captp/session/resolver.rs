@@ -1,8 +1,12 @@
 use std::sync::Arc;
 
-use super::{CapTpDeliver, SendError};
-use crate::captp::msg::{DescImport, DescImportObject};
-use syrup::Serialize;
+use syrup::{RawSyrup, Serialize};
+
+use super::CapTpDeliver;
+use crate::captp::{
+    msg::{DescExport, DescImport, DescImportObject},
+    object::{DeliverError, DeliverOnlyError},
+};
 
 #[must_use]
 pub struct GenericResolver {
@@ -59,37 +63,69 @@ impl GenericResolver {
         }
     }
 
-    fn position(&self) -> u64 {
+    fn position(&self) -> DescExport {
         use crate::captp::msg::DescImportPromise;
         match self.resolve_me_desc {
             DescImport::Object(DescImportObject { position })
-            | DescImport::Promise(DescImportPromise { position }) => position,
+            | DescImport::Promise(DescImportPromise { position }) => position.into(),
         }
     }
 
-    pub async fn fulfill<'f, 'arg, Arg: Serialize + 'arg>(
+    pub async fn fulfill<'arg, Arg: Serialize + ?Sized + 'arg>(
         mut self,
         args: impl IntoIterator<Item = &'arg Arg>,
         answer_pos: Option<u64>,
         resolve_me_desc: DescImport,
-    ) -> Result<(), SendError> {
-        let args = syrup::raw_syrup_unwrap![&syrup::Symbol("fulfill"); args];
+    ) -> Result<(), DeliverError> {
         #[cfg(feature = "extra-diagnostics")]
         {
             self.resolved = true;
         }
         self.session
-            .deliver(self.position(), args, answer_pos, resolve_me_desc)
+            .deliver(
+                self.position(),
+                &RawSyrup::vec_from_ident_iter("fulfill", args.into_iter())?,
+                answer_pos,
+                resolve_me_desc,
+            )
             .await
+            .map_err(From::from)
     }
 
-    pub async fn break_promise<'f>(mut self, error: impl Serialize) -> Result<(), SendError> {
-        let args = syrup::raw_syrup_unwrap![&syrup::Symbol("break"), &error];
+    pub async fn fulfill_and<'arg, Arg: Serialize + ?Sized + 'arg>(
+        mut self,
+        args: impl IntoIterator<Item = &'arg Arg>,
+    ) -> Result<Vec<syrup::Item>, DeliverError> {
         #[cfg(feature = "extra-diagnostics")]
         {
             self.resolved = true;
         }
-        self.session.deliver_only(self.position(), args).await
+        self.session
+            .deliver_and(
+                self.position(),
+                &RawSyrup::vec_from_ident_iter("fulfill", args.into_iter())?,
+            )
+            .await
+    }
+
+    pub async fn break_promise<'f>(
+        mut self,
+        error: &(impl Serialize + ?Sized),
+    ) -> Result<(), DeliverOnlyError> {
+        #[cfg(feature = "extra-diagnostics")]
+        {
+            self.resolved = true;
+        }
+        self.session
+            .deliver_only(
+                self.position(),
+                &[
+                    RawSyrup::try_from_serialize("break")?,
+                    RawSyrup::try_from_serialize(error)?,
+                ],
+            )
+            .await
+            .map_err(From::from)
     }
 }
 
@@ -115,13 +151,25 @@ impl std::clone::Clone for FetchResolver {
 }
 
 impl FetchResolver {
-    pub async fn fulfill(self, position: u64) -> Result<(), SendError> {
+    pub async fn fulfill(
+        self,
+        position: DescExport,
+        answer_pos: Option<u64>,
+        resolve_me_desc: DescImport,
+    ) -> Result<(), DeliverError> {
         self.base
-            .fulfill([&position], None, DescImportObject::from(0).into())
+            .fulfill([&position], answer_pos, resolve_me_desc)
             .await
     }
 
-    pub async fn break_promise(self, error: impl Serialize) -> Result<(), SendError> {
+    pub async fn fulfill_and(self, position: DescExport) -> Result<Vec<syrup::Item>, DeliverError> {
+        self.base.fulfill_and(&[position]).await
+    }
+
+    pub async fn break_promise(
+        self,
+        error: &(impl Serialize + ?Sized),
+    ) -> Result<(), DeliverOnlyError> {
         self.base.break_promise(error).await
     }
 }

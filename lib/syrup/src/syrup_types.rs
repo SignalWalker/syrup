@@ -66,6 +66,34 @@ impl RawSyrup {
     pub unsafe fn from_raw(data: Vec<u8>) -> Self {
         Self { data }
     }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.data
+    }
+
+    pub fn vec_from_iter<'item, Item: Serialize + ?Sized + 'item>(
+        iter: impl Iterator<Item = &'item Item>,
+    ) -> Result<Vec<Self>, crate::Error<'static>> {
+        // TODO :: switch to try_collect once that's stabilized https://github.com/rust-lang/rust/issues/94047
+        // iter.map(Self::try_from_serialize).try_collect()
+        let mut res = Vec::with_capacity(iter.size_hint().0);
+        for item in iter {
+            res.push(Self::try_from_serialize(item)?);
+        }
+        Ok(res)
+    }
+
+    pub fn vec_from_ident_iter<'item, Item: Serialize + ?Sized + 'item>(
+        ident: impl AsRef<str>,
+        iter: impl Iterator<Item = &'item Item>,
+    ) -> Result<Vec<Self>, crate::Error<'static>> {
+        let mut res = vec![Self::try_from_serialize(&crate::Symbol(ident.as_ref()))?];
+        res.reserve(iter.size_hint().0);
+        for item in iter {
+            res.push(Self::try_from_serialize(item)?);
+        }
+        Ok(res)
+    }
 }
 
 impl Serialize for RawSyrup {
@@ -223,28 +251,36 @@ impl std::fmt::Debug for Item {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ItemError {
+    #[error(transparent)]
+    Serialize(crate::Error<'static>),
+    #[error("deserialize failed, reason: {0}")]
+    Deserialize(String),
+}
+
 pub trait FromSyrupItem: Sized {
-    fn from_syrup_item(item: &Item) -> Result<Self, &Item>;
+    fn from_syrup_item(item: &Item) -> Result<Self, ItemError>;
 }
 
 pub trait AsSyrupItem {
-    fn as_syrup_item(&self) -> Option<Item>;
+    fn as_syrup_item(&self) -> Result<Item, ItemError>;
 }
 
 impl<T> FromSyrupItem for T
 where
     for<'de> T: Deserialize<'de>,
 {
-    fn from_syrup_item(item: &Item) -> Result<Self, &Item> {
-        let serialized = crate::ser::to_bytes(item).unwrap();
-        crate::de::from_bytes(&serialized).map_err(|_| item)
+    fn from_syrup_item(item: &Item) -> Result<Self, ItemError> {
+        let serialized = crate::ser::to_bytes(item).map_err(ItemError::Serialize)?;
+        crate::de::from_bytes(&serialized).map_err(|e| ItemError::Deserialize(e.to_string()))
     }
 }
 
 impl<T: Serialize> AsSyrupItem for T {
-    fn as_syrup_item(&self) -> Option<Item> {
-        let serialized = crate::ser::to_bytes(self).unwrap();
-        crate::de::from_bytes(&serialized).ok()
+    fn as_syrup_item(&self) -> Result<Item, ItemError> {
+        let serialized = crate::ser::to_bytes(self).map_err(ItemError::Serialize)?;
+        crate::de::from_bytes(&serialized).map_err(|e| ItemError::Deserialize(e.to_string()))
     }
 }
 

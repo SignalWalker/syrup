@@ -1,20 +1,19 @@
-use crate::{
+use parking_lot::RwLock;
+use rexa::{
     async_compat::{mpsc, oneshot, Mutex as AsyncMutex, RwLock as AsyncRwLock},
     captp::CapTpSessionManager,
     locator::NodeLocator,
+    netlayer::Netlayer,
 };
 use std::{
     collections::HashMap,
     future::Future,
-    sync::{Arc, PoisonError, RwLock, Weak},
+    sync::{Arc, Weak},
 };
-#[cfg(feature = "tokio")]
 use tokio::io::DuplexStream;
 
-use super::Netlayer;
-
-type MockReader = <Arc<MockNetlayer> as Netlayer>::Reader;
-type MockWriter = <Arc<MockNetlayer> as Netlayer>::Writer;
+type MockReader = <MockNetlayer as Netlayer>::Reader;
+type MockWriter = <MockNetlayer as Netlayer>::Writer;
 type StreamSend = oneshot::Sender<(MockReader, MockWriter)>;
 
 lazy_static::lazy_static! {
@@ -37,8 +36,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
-impl<Guard> From<PoisonError<Guard>> for Error {
-    fn from(_: PoisonError<Guard>) -> Self {
+impl<Guard> From<std::sync::PoisonError<Guard>> for Error {
+    fn from(_: std::sync::PoisonError<Guard>) -> Self {
         Self::RegistryPoisoned
     }
 }
@@ -51,7 +50,7 @@ pub struct MockNetlayer {
 
 impl MockNetlayer {
     pub fn bind(name: String) -> Result<Arc<Self>, Error> {
-        let mut reg = MOCK_REGISTRY.write()?;
+        let mut reg = MOCK_REGISTRY.write();
         if let Some(res) = reg.get(&name).and_then(|(p, _)| Weak::upgrade(p)) {
             Ok(res)
         } else {
@@ -66,25 +65,24 @@ impl MockNetlayer {
         }
     }
 
-    pub fn close(self) -> Result<(), Error> {
-        MOCK_REGISTRY.write()?.remove(&self.name);
-        Ok(())
+    pub fn close(self) {
+        MOCK_REGISTRY.write().remove(&self.name);
     }
 }
 
-impl Netlayer for Arc<MockNetlayer> {
+impl Netlayer for MockNetlayer {
     type Reader = DuplexStream;
     type Writer = DuplexStream;
     type Error = Error;
 
     fn connect<HintKey: syrup::Serialize, HintValue: syrup::Serialize>(
         &self,
-        locator: &crate::locator::NodeLocator<HintKey, HintValue>,
+        locator: &rexa::locator::NodeLocator<HintKey, HintValue>,
     ) -> impl Future<
-        Output = Result<crate::captp::CapTpSession<Self::Reader, Self::Writer>, Self::Error>,
+        Output = Result<rexa::captp::CapTpSession<Self::Reader, Self::Writer>, Self::Error>,
     > + Send
     where
-        crate::locator::NodeLocator<HintKey, HintValue>: Sync,
+        rexa::locator::NodeLocator<HintKey, HintValue>: Sync,
     {
         let remote_name = &locator.designator;
         async move {
@@ -94,14 +92,14 @@ impl Netlayer for Arc<MockNetlayer> {
 
             let (stream_send, stream_recv) = oneshot::channel();
             if let Err(_) = MOCK_REGISTRY
-                .read()?
+                .read()
                 .get(&locator.designator)
                 .ok_or(Error::NotFound)?
                 .1
                 .send(stream_send)
             {
                 // send failed, clean registry
-                MOCK_REGISTRY.write()?.remove(&locator.designator);
+                MOCK_REGISTRY.write().remove(&locator.designator);
                 return Err(Error::NotFound);
             }
 
@@ -119,7 +117,7 @@ impl Netlayer for Arc<MockNetlayer> {
     fn accept(
         &self,
     ) -> impl Future<
-        Output = Result<crate::captp::CapTpSession<Self::Reader, Self::Writer>, Self::Error>,
+        Output = Result<rexa::captp::CapTpSession<Self::Reader, Self::Writer>, Self::Error>,
     > + Send {
         async move {
             let stream_send = self.connect_recv.lock().await.recv().await.unwrap();
@@ -142,7 +140,7 @@ impl Netlayer for Arc<MockNetlayer> {
         }
     }
 
-    fn locator<HintKey, HintValue>(&self) -> crate::locator::NodeLocator<HintKey, HintValue> {
+    fn locator<HintKey, HintValue>(&self) -> rexa::locator::NodeLocator<HintKey, HintValue> {
         NodeLocator::new(self.name.clone(), "mock".to_owned())
     }
 }

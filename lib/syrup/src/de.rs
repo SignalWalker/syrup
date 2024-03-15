@@ -12,9 +12,6 @@ pub use byte_deserializer::*;
 mod visitor;
 pub use visitor::*;
 
-// mod stream;
-// pub use stream::*;
-
 pub use nom::Needed;
 
 pub trait DeserializeError {

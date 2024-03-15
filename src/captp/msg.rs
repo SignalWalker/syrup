@@ -142,7 +142,40 @@ pub use import_export::*;
 
 mod deliver {
     use super::{DescExport, DescImport};
-    use syrup::{Deserialize, Serialize};
+    use syrup::{ser::SerializeRecord, Deserialize, Serialize};
+
+    #[derive(Clone, Copy)]
+    pub struct OpDeliverOnlySlice<'args, Arg> {
+        pub to_desc: DescExport,
+        pub args: &'args [Arg],
+    }
+
+    impl<'args, Arg> OpDeliverOnlySlice<'args, Arg> {
+        pub fn new(to_desc: DescExport, args: &'args [Arg]) -> Self {
+            Self { to_desc, args }
+        }
+    }
+
+    impl<'arg, Arg> std::fmt::Debug for OpDeliverOnlySlice<'arg, Arg>
+    where
+        Self: Serialize,
+    {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&syrup::ser::to_pretty(self).unwrap())
+        }
+    }
+
+    impl<'args, Arg> Serialize for OpDeliverOnlySlice<'args, Arg>
+    where
+        [Arg]: Serialize,
+    {
+        fn serialize<Ser: syrup::ser::Serializer>(&self, s: Ser) -> Result<Ser::Ok, Ser::Error> {
+            let mut rec = s.serialize_record("op:deliver-only", Some(2))?;
+            rec.serialize_field(&self.to_desc)?;
+            rec.serialize_field(self.args)?;
+            rec.end()
+        }
+    }
 
     #[derive(Clone, Serialize, Deserialize)]
     #[syrup(name = "op:deliver-only")]
@@ -169,15 +202,50 @@ mod deliver {
         }
     }
 
-    impl OpDeliverOnly<syrup::RawSyrup> {
-        pub fn from_ident_args<'arg, Arg: Serialize + 'arg>(
-            position: u64,
-            ident: impl AsRef<str>,
-            args: impl IntoIterator<Item = &'arg Arg>,
-        ) -> Result<Self, syrup::Error<'static>> {
-            let mut serialized_args = syrup::raw_syrup![&syrup::Symbol::from(ident.as_ref()),];
-            serialized_args.extend(args.into_iter().map(syrup::RawSyrup::from_serialize));
-            Ok(Self::new(position, serialized_args))
+    #[derive(Clone, Copy)]
+    pub struct OpDeliverSlice<'args, Arg> {
+        pub to_desc: DescExport,
+        pub args: &'args [Arg],
+        pub answer_pos: Option<u64>,
+        pub resolve_me_desc: DescImport,
+    }
+
+    impl<'args, Arg> OpDeliverSlice<'args, Arg> {
+        pub fn new(
+            to_desc: DescExport,
+            args: &'args [Arg],
+            answer_pos: Option<u64>,
+            resolve_me_desc: DescImport,
+        ) -> Self {
+            Self {
+                to_desc,
+                args,
+                answer_pos,
+                resolve_me_desc,
+            }
+        }
+    }
+
+    impl<'arg, Arg> std::fmt::Debug for OpDeliverSlice<'arg, Arg>
+    where
+        Self: Serialize,
+    {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&syrup::ser::to_pretty(self).unwrap())
+        }
+    }
+
+    impl<'args, Arg> Serialize for OpDeliverSlice<'args, Arg>
+    where
+        [Arg]: Serialize,
+    {
+        fn serialize<Ser: syrup::ser::Serializer>(&self, s: Ser) -> Result<Ser::Ok, Ser::Error> {
+            let mut rec = s.serialize_record("op:deliver", Some(4))?;
+            rec.serialize_field(&self.to_desc)?;
+            rec.serialize_field(self.args)?;
+            rec.serialize_field(&self.answer_pos)?;
+            rec.serialize_field(&self.resolve_me_desc)?;
+            rec.end()
         }
     }
 

@@ -1,13 +1,20 @@
 #[cfg(not(feature = "tokio"))]
 pub use futures::{
-    channel::{mpsc, oneshot},
+    channel::{
+        mpsc,
+        oneshot::{self, Canceled as OneshotRecvError},
+    },
     lock::Mutex,
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
 };
 #[cfg(feature = "tokio")]
 pub use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::{mpsc, oneshot, Mutex, RwLock},
+    sync::{
+        mpsc,
+        oneshot::{self, error::RecvError as OneshotRecvError},
+        Mutex, RwLock,
+    },
 };
 
 // /// Copy of [futures::io::AsyncRead] so that we can implement it for [tokio::io::AsyncRead] when `#[cfg(feature = "tokio")]`.
