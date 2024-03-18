@@ -15,7 +15,7 @@ impl ToTokens for ExportFn {
         // let call: Expr = parse_quote_spanned! {ident.span()=> Self::#ident(#(#args),*) };
         let call: Expr =
             parse_quote_spanned! {ident.span()=> Self::#ident(self, remote_key, position) };
-        call.to_tokens(tokens)
+        call.to_tokens(tokens);
     }
 }
 
@@ -55,6 +55,6 @@ impl ToTokens for ExportInput {
                 parse_quote_spanned! {id.span()=> #id }
             }
         }
-        .to_tokens(tokens)
+        .to_tokens(tokens);
     }
 }

@@ -10,27 +10,23 @@ impl AsyncStreamListener for tokio::net::UnixListener {
     type Error = std::io::Error;
     type Stream = tokio::net::UnixStream;
 
-    fn bind<'addr>(
-        addr: Self::AddressInput<'addr>,
-    ) -> impl std::future::Future<Output = Result<Self, Self::Error>> {
-        async move {
-            // tokio doesn't provide bind_addr
-            let std_listener = std::os::unix::net::UnixListener::bind_addr(addr)?;
-            // required for tokio to work as expected
-            std_listener.set_nonblocking(true)?;
-            tokio::net::UnixListener::from_std(std_listener)
-        }
+    async fn bind(addr: Self::AddressInput<'_>) -> Result<Self, Self::Error> {
+        // tokio doesn't provide bind_addr
+        let std_listener = std::os::unix::net::UnixListener::bind_addr(addr)?;
+        // required for tokio to work as expected
+        std_listener.set_nonblocking(true)?;
+        tokio::net::UnixListener::from_std(std_listener)
     }
 
     fn accept(
         &self,
     ) -> impl std::future::Future<Output = Result<(Self::Stream, Self::AddressOutput), Self::Error>>
            + std::marker::Send {
-        tokio::net::UnixListener::accept(&self)
+        tokio::net::UnixListener::accept(self)
     }
 
     fn local_addr(&self) -> Result<Self::AddressOutput, Self::Error> {
-        tokio::net::UnixListener::local_addr(&self)
+        tokio::net::UnixListener::local_addr(self)
     }
 
     fn designator(&self) -> Result<String, Self::Error> {

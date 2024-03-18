@@ -30,7 +30,7 @@ impl<'i> ByteDeserializer<'i> {
 
     #[inline]
     fn peek(&self) -> Option<u8> {
-        self.input.get(0).cloned()
+        self.input.first().cloned()
     }
 }
 
@@ -204,7 +204,7 @@ impl<'i> RecordFieldAccess<'i> for &mut ByteDeserializer<'i> {
         &mut self,
         seed: F,
     ) -> Result<Option<F::Value>, Self::Error> {
-        if self.input.get(0).cloned() == Some(b'>') {
+        if self.input.first().cloned() == Some(b'>') {
             Ok(None)
         } else {
             seed.deserialize(&mut **self).map(Some)
@@ -233,7 +233,7 @@ impl<'i> SeqAccess<'i> for &mut ByteDeserializer<'i> {
         &mut self,
         seed: V,
     ) -> Result<Option<V::Value>, Self::Error> {
-        if self.input.get(0).cloned() == Some(b']') {
+        if self.input.first().cloned() == Some(b']') {
             Ok(None)
         } else {
             seed.deserialize(&mut **self).map(Some)
@@ -248,7 +248,7 @@ impl<'i> SetAccess<'i> for &mut ByteDeserializer<'i> {
         &mut self,
         seed: V,
     ) -> Result<Option<V::Value>, Self::Error> {
-        if self.input.get(0).cloned() == Some(b'$') {
+        if self.input.first().cloned() == Some(b'$') {
             Ok(None)
         } else {
             seed.deserialize(&mut **self).map(Some)
@@ -263,7 +263,7 @@ impl<'i> DictAccess<'i> for &mut ByteDeserializer<'i> {
         &mut self,
         seed: V,
     ) -> Result<Option<V::Value>, Self::Error> {
-        if self.input.get(0).cloned() == Some(b'}') {
+        if self.input.first().cloned() == Some(b'}') {
             Ok(None)
         } else {
             seed.deserialize(&mut **self).map(Some)

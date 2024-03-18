@@ -83,7 +83,7 @@ impl<'cx> DeliverInput<'cx> {
                     let syrup = &context.syrup;
                     let ty = &input.ty;
                     parse_quote_spanned! {input.span()=>
-                        <#ty as #syrup::FromSyrupItem>::from_syrup_item(&arg).ok_or_else(|| #error_t::unexpected(::std::stringify!(#ty), 0, arg))?
+                        <#ty as #syrup::FromSyrupItem>::from_syrup_item(&arg).map_err(|_| #error_t::unexpected(::std::stringify!(#ty), 0, arg))?
                     }
                 },
                 context,
@@ -97,12 +97,11 @@ impl<'cx> ToTokens for DeliverInput<'cx> {
         match self {
             DeliverInput::Receiver(receiver) => {
                 let expr: Expr = parse_quote_spanned! {receiver.span()=> self};
-                expr.to_tokens(tokens)
+                expr.to_tokens(tokens);
             }
-            DeliverInput::Session { map } => map.to_tokens(tokens),
-            DeliverInput::Args { map } => map.to_tokens(tokens),
-            DeliverInput::Resolver { map } => map.to_tokens(tokens),
-            // DeliverInput::Iter { map } => map.to_tokens(tokens),
+            DeliverInput::Session { map }
+            | DeliverInput::Args { map }
+            | DeliverInput::Resolver { map } => map.to_tokens(tokens),
             DeliverInput::Syrup {
                 ty,
                 map,
@@ -114,7 +113,7 @@ impl<'cx> ToTokens for DeliverInput<'cx> {
                         None => return ::std::result::Result::Err(#error_t::missing(0, ::std::stringify!(#ty))), // ::std::todo!(::std::concat!("missing argument: ", #id, ": ", ::std::stringify!(#ty)))
                     }
                 }
-                .to_tokens(tokens)
+                .to_tokens(tokens);
             }
         }
     }
@@ -126,7 +125,7 @@ pub(crate) fn process_inputs<'cx, 'arg>(
 ) -> syn::Result<(LitBool, Vec<DeliverInput<'cx>>)> {
     let mut takes_resolver = LitBool::new(false, Span::call_site());
     let mut res = Vec::<DeliverInput<'cx>>::new();
-    for input in inputs.into_iter() {
+    for input in inputs {
         match input {
             FnArg::Typed(input) => {
                 let input = DeliverInput::process(context, input)?;

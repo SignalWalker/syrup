@@ -215,7 +215,7 @@ impl<'ser> Serializer for &'ser mut PrettySerializer {
     }
 
     fn serialize_sequence(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        self.res.push_str("[");
+        self.res.push('[');
         Ok(self)
     }
 

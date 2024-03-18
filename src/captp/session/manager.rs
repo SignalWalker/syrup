@@ -2,8 +2,9 @@ use super::{CapTpSession, CapTpSessionBuilder, CapTpSessionCore, CapTpSessionInt
 use crate::locator::NodeLocator;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use std::{collections::HashMap, sync::Arc};
+use syrup::Serialize;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct CapTpSessionManager<Reader, Writer> {
     sessions: HashMap<String, CapTpSession<Reader, Writer>>,
     outgoing: HashMap<String, (SigningKey, VerifyingKey)>,
@@ -30,11 +31,11 @@ impl<Reader, Writer> CapTpSessionManager<Reader, Writer> {
         self.sessions.get(designator.as_ref())
     }
 
-    pub fn init_session<'manager>(
-        &'manager mut self,
+    pub fn init_session(
+        &mut self,
         reader: Reader,
         writer: Writer,
-    ) -> CapTpSessionBuilder<'manager, Reader, Writer> {
+    ) -> CapTpSessionBuilder<'_, Reader, Writer> {
         CapTpSessionBuilder::new(self, reader, writer)
     }
 
@@ -44,13 +45,15 @@ impl<Reader, Writer> CapTpSessionManager<Reader, Writer> {
         signing_key: SigningKey,
         remote_vkey: VerifyingKey,
         remote_loc: NodeLocator<HKey, HVal>,
-        // registry: Arc<super::SwissRegistry<Socket>>,
-    ) -> CapTpSession<Reader, Writer> {
+    ) -> CapTpSession<Reader, Writer>
+    where
+        NodeLocator<HKey, HVal>: Serialize,
+    {
         let internal = Arc::new(CapTpSessionInternal::new(
             core,
             signing_key,
             remote_vkey,
-            // registry,
+            &remote_loc,
         ));
         let res = CapTpSession { base: internal };
         self.sessions.insert(remote_loc.designator, res.clone());

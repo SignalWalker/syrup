@@ -68,8 +68,7 @@ impl<'input> From<nom::Err<Error<'input>>> for Error<'input> {
                 input: None,
                 kind: ErrorKind::Incomplete(n),
             },
-            nom::Err::Error(e) => e,
-            nom::Err::Failure(e) => e,
+            nom::Err::Error(e) | nom::Err::Failure(e) => e,
         }
     }
 }
@@ -93,7 +92,7 @@ impl<'input> crate::de::DeserializeError for Error<'input> {
     fn needed(&self) -> Option<nom::Needed> {
         match self.kind {
             ErrorKind::Incomplete(n) => Some(n),
-            _ => None,
+            ErrorKind::Parse(_) => None,
         }
     }
 }

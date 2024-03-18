@@ -6,7 +6,7 @@ use syrup::{RawSyrup, Serialize};
 
 use super::{
     msg::{DescExport, DescImport},
-    AbstractCapTpSession, CapTpDeliver, Delivery, GenericResolver, SendError,
+    AbstractCapTpSession, CapTpDeliver, Delivery, GenericResolver, RemoteKey, SendError,
 };
 use crate::async_compat::{mpsc, oneshot, OneshotRecvError};
 
@@ -18,7 +18,7 @@ pub type DeliverySender = mpsc::UnboundedSender<Delivery>;
 /// Receiving half of an object pipe.
 pub type DeliveryReceiver = mpsc::UnboundedReceiver<Delivery>;
 
-/// Returned by [Object::deliver_only]
+/// Returned by [`Object::deliver_only`]
 pub enum ObjectOnlyError {}
 
 /// Returned by [`Object`] functions.
@@ -66,12 +66,12 @@ pub trait Object {
     ) -> Result<(), ObjectError>;
 
     // TODO :: Better error type
-    fn deliver<'result>(
-        &'result self,
+    fn deliver(
+        &self,
         session: Arc<dyn AbstractCapTpSession + Send + Sync>,
         args: Vec<syrup::Item>,
         resolver: GenericResolver,
-    ) -> BoxFuture<'result, Result<(), ObjectError>>;
+    ) -> BoxFuture<'_, Result<(), ObjectError>>;
 
     /// Called when this object is exported. By default, does nothing.
     #[allow(unused_variables)]
@@ -120,10 +120,7 @@ impl Resolver {
 #[crate::impl_object(rexa = crate, tracing = ::tracing)]
 impl Resolver {
     #[deliver()]
-    fn fulfill<'item>(
-        &self,
-        #[arg(args)] args: Vec<syrup::Item>,
-    ) -> Result<&'static str, &'static str> {
+    fn fulfill(&self, #[arg(args)] args: Vec<syrup::Item>) -> Result<&'static str, &'static str> {
         match self.resolve(Ok(args)) {
             Ok(_) => Ok("promise fulfilled"),
             Err(_) => Err("promise already resolved"),
@@ -154,7 +151,7 @@ impl Resolver {
     }
 }
 
-/// An object representing the response to an [OpDeliver].
+/// An object representing the response to an [`OpDeliver`].
 pub struct Answer {
     receiver: PromiseReceiver,
 }
@@ -210,6 +207,10 @@ impl RemoteObject {
         position: DescExport,
     ) -> Self {
         Self { session, position }
+    }
+
+    pub fn remote_vkey(&self) -> RemoteKey {
+        self.session.remote_vkey()
     }
 
     pub async fn deliver_only_serialized(&self, args: &[syrup::RawSyrup]) -> Result<(), SendError> {
@@ -310,6 +311,8 @@ impl RemoteObject {
         self.session.clone().into_remote_object(position)
     }
 
+    /// # Safety
+    /// - There must be an object exported at `position`.
     #[allow(unsafe_code)]
     pub unsafe fn get_remote_object_unchecked(&self, position: DescExport) -> RemoteObject {
         unsafe { self.session.clone().into_remote_object_unchecked(position) }

@@ -4,7 +4,6 @@ use rexa::{
     locator::NodeLocator,
     netlayer::Netlayer,
 };
-use std::future::Future;
 use syrup::Serialize;
 
 #[cfg(feature = "datastream-tcp")]
@@ -23,8 +22,8 @@ pub trait AsyncStreamListener: Sized {
     type AddressOutput;
     type Error;
     type Stream: AsyncDataStream;
-    fn bind<'addr>(
-        addrs: Self::AddressInput<'addr>,
+    fn bind(
+        addrs: Self::AddressInput<'_>,
     ) -> impl std::future::Future<Output = Result<Self, Self::Error>>;
     fn accept(
         &self,
@@ -45,7 +44,7 @@ pub trait AsyncDataStream: Sized {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum Error<Listener: std::error::Error, Stream: std::error::Error> {
+pub enum Error<Listener, Stream> {
     #[error(transparent)]
     Listener(Listener),
     #[error(transparent)]
@@ -78,65 +77,58 @@ where
     type Writer = <Listener::Stream as AsyncDataStream>::WriteHalf;
     type Error = Error<Listener::Error, <Listener::Stream as AsyncDataStream>::Error>;
 
-    fn connect<HintKey: Serialize, HintValue: Serialize>(
+    async fn connect<HintKey: Serialize, HintValue: Serialize>(
         &self,
         locator: &NodeLocator<HintKey, HintValue>,
-    ) -> impl Future<Output = Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error>> + Send
+    ) -> Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error>
     where
         NodeLocator<HintKey, HintValue>: Sync,
     {
-        async move {
-            if let Some(session) = self.manager.read().await.get(&locator.designator) {
-                return Ok(session.clone());
-            }
-
-            tracing::debug!(
-                local = %self.listener.designator().map_err(Error::Listener)?,
-                remote = %syrup::ser::to_pretty(locator).unwrap(),
-                "starting connection"
-            );
-
-            let (reader, writer) = <Listener::Stream as AsyncDataStream>::connect(locator)
-                .await
-                .map_err(Error::Stream)?
-                .split();
-
-            self.manager
-                .write()
-                .await
-                .init_session(reader, writer)
-                .and_connect(self.locator::<String, String>())
-                .await
-                .map_err(From::from)
+        if let Some(session) = self.manager.read().await.get(&locator.designator) {
+            return Ok(session.clone());
         }
+
+        tracing::debug!(
+            local = %self.listener.designator().map_err(Error::Listener)?,
+            remote = %syrup::ser::to_pretty(locator).unwrap(),
+            "starting connection"
+        );
+
+        let (reader, writer) = <Listener::Stream as AsyncDataStream>::connect(locator)
+            .await
+            .map_err(Error::Stream)?
+            .split();
+
+        self.manager
+            .write()
+            .await
+            .init_session(reader, writer)
+            .and_connect(self.locator::<String, String>())
+            .await
+            .map_err(From::from)
     }
 
-    fn accept(
-        &self,
-    ) -> impl Future<Output = Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error>> + Send
-    {
-        async move {
-            tracing::debug!(
-                local = %self.listener.designator().map_err(Error::Listener)?,
-                "accepting connection"
-            );
+    async fn accept(&self) -> Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error> {
+        tracing::debug!(
+            local = %self.listener.designator().map_err(Error::Listener)?,
+            "accepting connection"
+        );
 
-            let (reader, writer) = self
-                .listener
-                .accept()
-                .await
-                .map_err(Error::Listener)?
-                .0
-                .split();
+        let (reader, writer) = self
+            .listener
+            .accept()
+            .await
+            .map_err(Error::Listener)?
+            .0
+            .split();
 
-            self.manager
-                .write()
-                .await
-                .init_session(reader, writer)
-                .and_accept(self.locator::<String, String>())
-                .await
-                .map_err(From::from)
-        }
+        self.manager
+            .write()
+            .await
+            .init_session(reader, writer)
+            .and_accept(self.locator::<String, String>())
+            .await
+            .map_err(From::from)
     }
 
     fn locator<HKey, HVal>(&self) -> NodeLocator<HKey, HVal> {
@@ -148,7 +140,7 @@ where
 }
 
 impl<Listener: AsyncStreamListener> DataStreamNetlayer<Listener> {
-    pub async fn bind<'addr>(addr: Listener::AddressInput<'addr>) -> Result<Self, Listener::Error> {
+    pub async fn bind(addr: Listener::AddressInput<'_>) -> Result<Self, Listener::Error> {
         let listener = Listener::bind(addr).await?;
         Ok(Self {
             listener,

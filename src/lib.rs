@@ -11,7 +11,7 @@ pub mod async_compat;
 
 pub use rexa_proc::*;
 
-pub const CAPTP_VERSION: &'static str = "1.0";
+pub const CAPTP_VERSION: &str = "1.0";
 
 // FIX :: Remove this
 #[doc(hidden)]

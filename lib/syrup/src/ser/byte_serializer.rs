@@ -42,7 +42,7 @@ impl<'ser> SerializeDict for ByteDictSerializer<'ser> {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        for (k, v) in self.entries.into_iter() {
+        for (k, v) in self.entries {
             self.ser.bytes.extend_from_slice(&k);
             self.ser.bytes.extend_from_slice(&v);
         }
@@ -77,7 +77,7 @@ impl<'ser> SerializeSet for ByteSetSerializer<'ser> {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        for e in self.entries.into_iter() {
+        for e in self.entries {
             self.ser.bytes.extend_from_slice(&e);
         }
         self.ser.bytes.push(b'$');

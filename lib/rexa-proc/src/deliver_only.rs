@@ -35,10 +35,13 @@ impl<'cx> DeliverOnlyFn<'cx> {
 
     pub(crate) fn symbol(&self) -> LitStr {
         match &self.attr {
-            DeliverOnlyAttr::Normal { symbol, .. } => match symbol {
-                Some(symbol) => symbol.clone(),
-                None => LitStr::new(&self.ident.to_string(), self.ident.span()),
-            },
+            DeliverOnlyAttr::Normal {
+                symbol: Some(symbol),
+                ..
+            } => symbol.clone(),
+            DeliverOnlyAttr::Normal { symbol: None, .. } => {
+                LitStr::new(&self.ident.to_string(), self.ident.span())
+            }
             _ => LitStr::new(&self.ident.to_string(), self.ident.span()),
         }
     }
@@ -53,7 +56,7 @@ impl<'cx> ToTokens for DeliverOnlyFn<'cx> {
         let mut call: Expr = parse_quote_spanned! {self.ident.span()=> Self::#ident(#(#args),*)};
         call = parse_quote_spanned! {self.output.span()=> #call.map_err(#from_fn)};
 
-        call.to_tokens(tokens)
+        call.to_tokens(tokens);
     }
 }
 

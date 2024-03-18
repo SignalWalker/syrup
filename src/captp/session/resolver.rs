@@ -9,6 +9,7 @@ use crate::captp::{
 };
 
 #[must_use]
+#[derive(Clone)]
 pub struct GenericResolver {
     session: std::sync::Arc<dyn CapTpDeliver + Send + Sync>,
     answer_pos: Option<u64>,
@@ -33,18 +34,6 @@ impl std::fmt::Debug for GenericResolver {
             .field("answer_pos", &self.answer_pos)
             .field("resolve_me_desc", &self.resolve_me_desc)
             .finish()
-    }
-}
-
-impl std::clone::Clone for GenericResolver {
-    fn clone(&self) -> Self {
-        Self {
-            session: self.session.clone(),
-            answer_pos: self.answer_pos.clone(),
-            resolve_me_desc: self.resolve_me_desc.clone(),
-            #[cfg(feature = "extra-diagnostics")]
-            resolved: self.resolved,
-        }
     }
 }
 

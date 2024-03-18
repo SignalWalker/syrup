@@ -91,12 +91,13 @@ impl Netlayer for MockNetlayer {
             }
 
             let (stream_send, stream_recv) = oneshot::channel();
-            if let Err(_) = MOCK_REGISTRY
+            if MOCK_REGISTRY
                 .read()
                 .get(&locator.designator)
                 .ok_or(Error::NotFound)?
                 .1
                 .send(stream_send)
+                .is_err()
             {
                 // send failed, clean registry
                 MOCK_REGISTRY.write().remove(&locator.designator);
@@ -114,30 +115,26 @@ impl Netlayer for MockNetlayer {
         }
     }
 
-    fn accept(
+    async fn accept(
         &self,
-    ) -> impl Future<
-        Output = Result<rexa::captp::CapTpSession<Self::Reader, Self::Writer>, Self::Error>,
-    > + Send {
-        async move {
-            let stream_send = self.connect_recv.lock().await.recv().await.unwrap();
-            let (reader, writer) = {
-                // HACK :: there's probably a better way to set this number but whatever
-                let (local_reader, remote_writer) = tokio::io::duplex(1024);
-                let (remote_reader, local_writer) = tokio::io::duplex(1024);
-                stream_send
-                    .send((remote_reader, remote_writer))
-                    .map_err(|_| Error::Accept)?;
-                (local_reader, local_writer)
-            };
-            self.manager
-                .write()
-                .await
-                .init_session(reader, writer)
-                .and_connect(self.locator::<String, String>())
-                .await
-                .map_err(From::from)
-        }
+    ) -> Result<rexa::captp::CapTpSession<Self::Reader, Self::Writer>, Self::Error> {
+        let stream_send = self.connect_recv.lock().await.recv().await.unwrap();
+        let (reader, writer) = {
+            // HACK :: there's probably a better way to set this number but whatever
+            let (local_reader, remote_writer) = tokio::io::duplex(1024);
+            let (remote_reader, local_writer) = tokio::io::duplex(1024);
+            stream_send
+                .send((remote_reader, remote_writer))
+                .map_err(|_| Error::Accept)?;
+            (local_reader, local_writer)
+        };
+        self.manager
+            .write()
+            .await
+            .init_session(reader, writer)
+            .and_connect(self.locator::<String, String>())
+            .await
+            .map_err(From::from)
     }
 
     fn locator<HintKey, HintValue>(&self) -> rexa::locator::NodeLocator<HintKey, HintValue> {

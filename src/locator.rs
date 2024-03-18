@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use syrup::{Deserialize, Serialize};
 
+#[allow(clippy::doc_markdown)] // false positive on `OCapN`
 /// An identifier for a single OCapN node.
 ///
 /// From the [draft specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Locators.md):

@@ -101,37 +101,38 @@ impl<'input> Field<'input> {
                 predicates: HashMap<&'p Ident, &'p WherePredicate>,
             }
             impl<'p> ParamData<'p> {
+                #[allow(clippy::needless_borrow)] // false positive(?)
                 fn from_params(
                     params: impl IntoIterator<Item = &'p GenericParam>,
                     clauses: Option<impl IntoIterator<Item = &'p WherePredicate>>,
                 ) -> Self {
-                    let mut lts = HashMap::new();
-                    let mut tys = HashMap::new();
-                    let mut cnsts = HashMap::new();
+                    let mut lts = HashMap::<&Ident, &GenericParam>::new();
+                    let mut tys = HashMap::<&Ident, &GenericParam>::new();
+                    let mut cnsts = HashMap::<&Ident, &GenericParam>::new();
                     for p in params {
                         match p {
                             GenericParam::Lifetime(lt) => {
-                                lts.insert(&lt.lifetime.ident, p);
+                                lts.insert(&lt.lifetime.ident, &p);
                             }
                             GenericParam::Type(t) => {
-                                tys.insert(&t.ident, p);
+                                tys.insert(&t.ident, &p);
                             }
                             GenericParam::Const(c) => {
-                                cnsts.insert(&c.ident, p);
+                                cnsts.insert(&c.ident, &p);
                             }
                         };
                     }
-                    let mut preds = HashMap::new();
+                    let mut preds = HashMap::<&Ident, &WherePredicate>::new();
                     if let Some(clauses) = clauses {
                         for clause in clauses {
                             match &clause {
                                 WherePredicate::Lifetime(lt) => {
-                                    preds.insert(&lt.lifetime.ident, clause);
+                                    preds.insert(&lt.lifetime.ident, &clause);
                                 }
                                 WherePredicate::Type(t) => match &t.bounded_ty {
                                     Type::Path(p) => match p.path.get_ident() {
                                         Some(id) => {
-                                            preds.insert(id, clause);
+                                            preds.insert(id, &clause);
                                         }
                                         None => {
                                             todo!("get field generic where predicates for {p:?}")
@@ -366,7 +367,9 @@ impl<'input> Field<'input> {
                     //     #driver::<#wrapper_ty #ty_generics>()?.unwrap().0
                     // }})
                 }
-                _ => errtodo!(self.ty.span(), "verbatim deserialization conversion"),
+                With::Verbatim(_) => {
+                    errtodo!(self.ty.span(), "verbatim deserialization conversion")
+                }
             },
             None => Ok(parse_quote! {
                 #driver::<#parse_to>()?.unwrap()
@@ -380,9 +383,10 @@ impl<'input> Field<'input> {
         driver: &Expr,
         index: u32,
     ) -> Result<Expr, syn::Error> {
-        let field_access = match self.ident {
-            Some(id) => quote! { &self.#id },
-            None => quote! { &self.#index },
+        let field_access = if let Some(id) = self.ident {
+            quote! { &self.#id }
+        } else {
+            quote! { &self.#index }
         };
         match &self.into {
             Some(i) => match i {
@@ -431,7 +435,7 @@ impl<'input> Field<'input> {
                 With::Optional => {
                     errtodo!(self.ty.span(), "optional serialization")
                 }
-                _ => errtodo!(self.ty.span(), "verbatim serialization conversion"),
+                With::Verbatim(_) => errtodo!(self.ty.span(), "verbatim serialization conversion"),
             },
             None => Ok(parse_quote! {
                 #driver(#field_access)?

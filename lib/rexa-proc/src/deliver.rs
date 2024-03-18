@@ -35,19 +35,22 @@ impl<'cx> DeliverFn<'cx> {
 
     pub(crate) fn symbol(&self) -> LitStr {
         match &self.attr {
-            DeliverAttr::Normal { symbol, .. } => match symbol {
-                Some(symbol) => symbol.clone(),
-                None => LitStr::new(&self.ident.to_string(), self.ident.span()),
-            },
+            DeliverAttr::Normal {
+                symbol: Some(symbol),
+                ..
+            } => symbol.clone(),
+            DeliverAttr::Normal { symbol: None, .. } => {
+                LitStr::new(&self.ident.to_string(), self.ident.span())
+            }
             _ => LitStr::new(&self.ident.to_string(), self.ident.span()),
         }
     }
 }
 
-fn get_result_spans<'r>(
+fn get_result_spans(
     expecting_result: bool,
-    output: &'r ReturnType,
-) -> syn::Result<(&'r dyn Spanned, &'r dyn Spanned)> {
+    output: &ReturnType,
+) -> syn::Result<(&dyn Spanned, &dyn Spanned)> {
     match output {
         ReturnType::Default => Ok((output, output)),
         ReturnType::Type(_, ty) => match &**ty {
@@ -66,10 +69,10 @@ fn get_result_spans<'r>(
                         };
                         Ok((
                             ok as &dyn Spanned,
-                            arg_iter
-                                .next()
-                                .map(|arg| arg as &dyn Spanned)
-                                .unwrap_or_else(|| &args.args as &dyn Spanned),
+                            arg_iter.next().map_or_else(
+                                || &args.args as &dyn Spanned,
+                                |arg| arg as &dyn Spanned,
+                            ),
                         ))
                     }
                     _ => Ok((tpath, tpath)),
@@ -136,7 +139,7 @@ impl<'cx> ToTokens for DeliverFn<'cx> {
             }
         }
 
-        call.to_tokens(tokens)
+        call.to_tokens(tokens);
     }
 }
 
@@ -196,7 +199,7 @@ impl DeliverAttr {
         attr: &Attribute,
         sig: &mut Signature,
     ) -> syn::Result<(Self, Vec<DeliverInput<'cx>>)> {
-        const RESOLVER_CONFLICT: &'static str = "this function takes a resolver parameter, and, therefore, resolution must be handled internally";
+        const RESOLVER_CONFLICT: &str = "this function takes a resolver parameter, and, therefore, resolution must be handled internally";
 
         let mut is_verbatim = false;
         let mut fallback = None;

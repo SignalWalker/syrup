@@ -96,7 +96,7 @@ pub mod bytes {
             ser::Serializer,
         };
 
-        pub fn serialize<S: Serializer>(bytes: &Vec<u8>, ser: S) -> Result<S::Ok, S::Error> {
+        pub fn serialize<S: Serializer>(bytes: &[u8], ser: S) -> Result<S::Ok, S::Error> {
             ser.serialize_bytes(bytes)
         }
 

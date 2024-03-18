@@ -60,20 +60,20 @@ impl<'input> Container<'input> {
                     }
                     "transparent" => {
                         from = Some(With::Verbatim(parse_quote! { self.0 }));
-                        into = Some(With::Verbatim(parse_quote! { self.0 }))
+                        into = Some(With::Verbatim(parse_quote! { self.0 }));
                     }
                     // bounds
                     "deserialize_bound" => {
                         des_bounds =
                             Some(Punctuated::<WherePredicate, Token![;]>::parse_terminated(
                                 meta.value()?,
-                            )?)
+                            )?);
                     }
                     "serialize_bound" => {
                         ser_bounds =
                             Some(Punctuated::<WherePredicate, Token![;]>::parse_terminated(
                                 meta.value()?,
-                            )?)
+                            )?);
                     }
                     _ => return Err(meta.error(format!("unrecognized syrup attribute: {attr_id}"))),
                 }

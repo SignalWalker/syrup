@@ -353,7 +353,7 @@ mod handoff {
 }
 pub use handoff::*;
 
-/// Used for [CapTpSession::recv_event](crate::captp::session::CapTpSession::recv_event).
+/// Used for [`CapTpSession::recv_event`](CapTpSession::recv_event).
 #[derive(Clone)]
 pub(super) enum Operation<Inner> {
     DeliverOnly(OpDeliverOnly<Inner>),

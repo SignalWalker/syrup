@@ -45,7 +45,7 @@ impl Serialize for VerifyingKey {
                 flags: "eddsa".to_owned(),
             },
             q: __impl_vkey::Q {
-                q: self.as_bytes().clone(),
+                q: *self.as_bytes(),
             },
         }
         .serialize(s)

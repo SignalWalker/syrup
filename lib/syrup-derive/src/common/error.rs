@@ -15,9 +15,9 @@ pub(crate) enum Error {
 
 impl quote::ToTokens for Error {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        fn extend_with_error(tokens: &mut TokenStream, error: impl ToString) {
+        fn extend_with_error(tokens: &mut TokenStream, error: &impl ToString) {
             let message = error.to_string();
-            tokens.extend(quote! { ::core::compile_error!(#message) })
+            tokens.extend(quote! { ::core::compile_error!(#message) });
         }
         match self {
             Self::Syn(s) => tokens.extend(s.to_compile_error()),

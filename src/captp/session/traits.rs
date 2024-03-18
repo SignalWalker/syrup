@@ -5,7 +5,7 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use syrup::RawSyrup;
 
-use super::{CapTpSessionInternal, Event, RecvError, SendError};
+use super::{CapTpSessionInternal, Event, RecvError, RemoteKey, SendError};
 use crate::async_compat::{AsyncRead, AsyncWrite};
 use crate::captp::msg::DescImport;
 use crate::captp::msg::{DescExport, OpAbort, OpDeliverOnlySlice, OpDeliverSlice};
@@ -32,18 +32,25 @@ pub(crate) trait CapTpDeliver {
     fn into_remote_object(self: Arc<Self>, position: DescExport) -> Option<RemoteObject>;
     #[allow(unsafe_code)]
     unsafe fn into_remote_object_unchecked(self: Arc<Self>, position: DescExport) -> RemoteObject;
+
+    fn remote_vkey(&self) -> RemoteKey;
 }
 
-/// Allows dynamic dispatch for CapTpSessions.
+/// Allows dynamic dispatch for `CapTpSession`s.
 pub trait AbstractCapTpSession {
     fn signing_key(&self) -> &SigningKey;
     fn remote_vkey(&self) -> &VerifyingKey;
     fn export(&self, obj: Arc<dyn crate::captp::object::Object + Send + Sync>) -> u64;
     fn into_remote_object(self: Arc<Self>, position: DescExport) -> Option<RemoteObject>;
+    /// # Safety
+    /// - An object must already be exported at `position`.
     #[allow(unsafe_code)]
     unsafe fn into_remote_object_unchecked(self: Arc<Self>, position: DescExport) -> RemoteObject;
     fn is_aborted(&self) -> bool;
-    fn abort<'s>(&'s self, reason: String) -> BoxFuture<'s, Result<(), SendError>>;
+    fn abort<'result>(
+        &'result self,
+        reason: &'result OpAbort,
+    ) -> BoxFuture<'result, Result<(), SendError>>;
     fn recv_event<'s>(self: Arc<Self>) -> BoxFuture<'s, Result<Event, RecvError>>;
     fn into_remote_bootstrap(self: Arc<Self>) -> RemoteBootstrap;
 }
@@ -100,6 +107,10 @@ where
     unsafe fn into_remote_object_unchecked(self: Arc<Self>, position: DescExport) -> RemoteObject {
         RemoteObject::new(self.clone(), position)
     }
+
+    fn remote_vkey(&self) -> RemoteKey {
+        self.remote_vkey
+    }
 }
 
 impl<Reader, Writer> AbstractCapTpSession for CapTpSessionInternal<Reader, Writer>
@@ -132,9 +143,9 @@ where
         self.is_aborted()
     }
 
-    fn abort<'s>(&'s self, reason: String) -> BoxFuture<'s, Result<(), SendError>> {
+    fn abort<'f>(&'f self, reason: &'f OpAbort) -> BoxFuture<'f, Result<(), SendError>> {
         async move {
-            let res = self.send_msg(&OpAbort::from(reason)).await;
+            let res = self.send_msg(reason).await;
             self.local_abort();
             res
         }

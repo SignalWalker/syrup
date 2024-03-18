@@ -50,7 +50,7 @@ macro_rules! internal_error {
     }
 }
 
-/// Like [std::todo], but it expands to return a [syn::parse::Error] instead of panic.
+/// Like [`std::todo`], but it expands to return a [`syn::parse::Error`] instead of panic.
 #[allow(unused_macro_rules)]
 macro_rules! todo {
     () => {
@@ -338,7 +338,6 @@ pub fn impl_object(
         deliver_verbatim,
         deliver_only_verbatim,
         export_fn,
-        ..
     } = {
         let parser = ObjectDefParser { context: &metadata };
         parse_macro_input!(obj_input with parser)
@@ -461,15 +460,11 @@ pub fn impl_object(
         }
     };
 
-    let exported: Option<ImplItemFn> = if let Some(exported) = export_fn {
-        Some(parse_quote! {
+    let exported: Option<ImplItemFn> = export_fn.map(|exported| parse_quote! {
             fn exported(&self, remote_key: &#rexa::captp::RemoteKey, position: #rexa::captp::msg::DescExport) {
                 #exported
             }
-        })
-    } else {
-        None
-    };
+        });
 
     quote_spanned! {span=>
         #base

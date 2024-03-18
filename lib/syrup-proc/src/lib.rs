@@ -6,7 +6,6 @@ use syn::{
 
 fn gen_tuple_idents(max_arity: usize) -> Vec<Ident> {
     (0..max_arity)
-        .into_iter()
         .map(|id_num| Ident::new(&format!("__{id_num}"), Span::call_site()))
         .collect()
 }
@@ -36,7 +35,7 @@ pub fn impl_deserialize_for_tuple(max_arity: proc_macro::TokenStream) -> proc_ma
     let idents = gen_tuple_idents(max_arity);
     let param_bound: TypeParamBound = parse_quote!(Deserialize<'input>);
     let mut res = TokenStream::new();
-    for idents in (1..=max_arity).into_iter().map(|arity| &idents[0..arity]) {
+    for idents in (1..=max_arity).map(|arity| &idents[0..arity]) {
         let (impl_generics, ty_generics) = gen_tuple_params(&param_bound, idents);
         let arity_str = idents.len().to_string();
         quote! {
@@ -74,13 +73,9 @@ pub fn impl_serialize_for_tuple(max_arity: proc_macro::TokenStream) -> proc_macr
     let idents = gen_tuple_idents(max_arity);
     let param_bound: TypeParamBound = parse_quote!(Serialize);
     let mut res = TokenStream::new();
-    for (arity, idents) in (1..=max_arity)
-        .into_iter()
-        .map(|arity| (arity, &idents[0..arity]))
-    {
+    for (arity, idents) in (1..=max_arity).map(|arity| (arity, &idents[0..arity])) {
         let (impl_generics, ty_generics) = gen_tuple_params(&param_bound, idents);
         let serializes = (0..arity)
-            .into_iter()
             .map(|index| {
                 let index = syn::Index::from(index);
                 quote! { &self.#index }

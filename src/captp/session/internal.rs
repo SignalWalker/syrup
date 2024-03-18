@@ -2,6 +2,7 @@ use super::{CapTpSessionCore, KeyMap, RecvError, SendError};
 use crate::{
     async_compat::{AsyncRead, AsyncWrite},
     captp::msg::Operation,
+    locator::NodeLocator,
 };
 use dashmap::{DashMap, DashSet};
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -11,12 +12,9 @@ use syrup::{Deserialize, Serialize};
 
 pub(crate) struct CapTpSessionInternal<Reader, Writer> {
     core: CapTpSessionCore<Reader, Writer>,
-    // msg_queue: flume::Receiver<Event<Socket>>,
-    // msg_queue_sender: flume::Sender<Event<Socket>>,
     pub(super) signing_key: SigningKey,
     pub(super) remote_vkey: VerifyingKey,
 
-    // pub(super) registry: Arc<SwissRegistry<Socket>>,
     /// Objects imported from the remote
     pub(super) imports: DashSet<u64>,
     /// Objects exported to the remote
@@ -28,6 +26,8 @@ pub(crate) struct CapTpSessionInternal<Reader, Writer> {
 
     pub(super) aborted_by_remote: RwLock<Option<String>>,
     pub(super) aborted_locally: AtomicBool,
+
+    pub(super) locator_serialized: Vec<u8>,
 }
 
 #[cfg(feature = "extra-diagnostics")]
@@ -48,18 +48,17 @@ impl<Reader, Writer> std::fmt::Debug for CapTpSessionInternal<Reader, Writer> {
 }
 
 impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
-    pub(super) fn new(
+    pub(super) fn new<HKey, HVal>(
         core: CapTpSessionCore<Reader, Writer>,
         signing_key: SigningKey,
         remote_vkey: VerifyingKey,
-        // registry: Arc<SwissRegistry<Socket>>,
-    ) -> Self {
-        // let (sender, receiver) = flume::unbounded();
+        locator: &NodeLocator<HKey, HVal>,
+    ) -> Self
+    where
+        NodeLocator<HKey, HVal>: Serialize,
+    {
         Self {
             core,
-            // msg_queue: receiver,
-            // msg_queue_sender: sender,
-            // registry,
             signing_key,
             remote_vkey,
             imports: DashSet::new(),
@@ -69,6 +68,8 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
             recv_buf: Mutex::new(Vec::new()),
             aborted_by_remote: RwLock::default(),
             aborted_locally: false.into(),
+
+            locator_serialized: syrup::ser::to_bytes(locator).unwrap(),
         }
     }
 
@@ -166,7 +167,7 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
 
     pub(super) fn local_abort(&self) {
         self.aborted_locally
-            .store(true, std::sync::atomic::Ordering::Relaxed)
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub(super) fn set_remote_abort(&self, reason: String) {

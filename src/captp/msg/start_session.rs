@@ -72,8 +72,7 @@ impl<HKey, HVal> OpStartSession<HKey, HVal> {
 
     pub fn verify_location(&self) -> Result<(), SignatureError>
     where
-        HKey: Serialize,
-        HVal: Serialize,
+        NodeLocator<HKey, HVal>: Serialize,
     {
         self.session_pubkey.ecc.verify_strict(
             &syrup::ser::to_bytes(&self.acceptable_location).unwrap(),

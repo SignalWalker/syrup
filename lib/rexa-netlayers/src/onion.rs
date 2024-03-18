@@ -97,7 +97,7 @@ impl<Rt: Runtime> OnionNetlayer<Rt> {
             .config(client_config)
             .create_bootstrapped()
             .await?;
-        Ok(Self::new(client, service_config)?)
+        Self::new(client, service_config)
     }
 }
 

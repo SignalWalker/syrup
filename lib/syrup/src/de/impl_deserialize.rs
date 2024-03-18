@@ -364,7 +364,7 @@ deserialize_int!(isize, deserialize_isize =>
     visit_i8, i8, v, isize::from(v);
     visit_i16, i16, v, isize::from(v);
     visit_i32, i32, v, isize::try_from(v).unwrap();
-    visit_isize, isize, v, isize::from(v)
+    visit_isize, isize, v, v
 );
 #[cfg(target_pointer_width = "64")]
 deserialize_int!(isize, deserialize_isize =>
@@ -372,7 +372,7 @@ deserialize_int!(isize, deserialize_isize =>
     visit_i16, i16, v, isize::from(v);
     visit_i32, i32, v, isize::try_from(v).unwrap();
     visit_i64, i64, v, isize::try_from(v).unwrap();
-    visit_isize, isize, v, isize::from(v)
+    visit_isize, isize, v, v
 );
 
 deserialize_int!(u8, deserialize_u8 =>
@@ -411,7 +411,7 @@ deserialize_int!(usize, deserialize_usize =>
     visit_u8, u8, v, usize::from(v);
     visit_u16, u16, v, usize::from(v);
     visit_u32, u32, v, usize::try_from(v).unwrap();
-    visit_usize, usize, v, usize::from(v)
+    visit_usize, usize, v, v
 );
 #[cfg(target_pointer_width = "64")]
 deserialize_int!(usize, deserialize_usize =>
@@ -419,7 +419,7 @@ deserialize_int!(usize, deserialize_usize =>
     visit_u16, u16, v, usize::from(v);
     visit_u32, u32, v, usize::try_from(v).unwrap();
     visit_u64, u64, v, usize::try_from(v).unwrap();
-    visit_usize, usize, v, usize::from(v)
+    visit_usize, usize, v, v
 );
 
 macro_rules! deserialize_float {

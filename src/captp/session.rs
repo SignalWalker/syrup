@@ -131,9 +131,7 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
         RemoteBootstrap::new(self.base.clone())
     }
 
-    pub fn event_stream<'s>(
-        &'s self,
-    ) -> impl futures::stream::Stream<Item = Result<Event, RecvError>> + 's
+    pub fn event_stream(&self) -> impl futures::stream::Stream<Item = Result<Event, RecvError>> + '_
     where
         Reader: AsyncRead + Send + Unpin + 'static,
         Writer: AsyncWrite + Send + Unpin + 'static,
