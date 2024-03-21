@@ -38,17 +38,13 @@ impl<'m, Reader, Writer> CapTpSessionBuilder<'m, Reader, Writer> {
     //     self
     // }
 
-    pub fn and_accept<HKey, HVal>(
+    pub fn and_accept(
         self,
-        local_locator: NodeLocator<HKey, HVal>,
+        local_locator: NodeLocator,
     ) -> impl Future<Output = Result<CapTpSession<Reader, Writer>, std::io::Error>> + 'm
     where
         Reader: AsyncRead + Unpin,
         Writer: AsyncWrite + Unpin,
-        NodeLocator<HKey, HVal>: Serialize,
-        OpStartSession<HKey, HVal>: Serialize + 'm,
-        for<'de> NodeLocator<HKey, HVal>: Deserialize<'de>,
-        for<'de> OpStartSession<HKey, HVal>: Deserialize<'de>,
     {
         tracing::debug!(local = %local_locator.designator, "accepting OpStartSession");
 
@@ -56,31 +52,28 @@ impl<'m, Reader, Writer> CapTpSessionBuilder<'m, Reader, Writer> {
         let core = CapTpSessionCore::new(self.reader, self.writer);
 
         async move {
-            let (remote_vkey, remote_loc) = Self::recv_start_session::<HKey, HVal>(&core).await?;
+            let (remote_vkey, remote_loc) = Self::recv_start_session(&core).await?;
 
             core.send_msg(&start_msg).await?;
             core.flush().await?;
 
-            Ok(self.manager.finalize_session::<HKey, HVal>(
-                core,
-                self.signing_key,
-                remote_vkey,
-                remote_loc,
-            ))
+            Ok(self
+                .manager
+                .finalize_session(core, self.signing_key, remote_vkey, remote_loc))
         }
     }
 
-    pub fn and_connect<HKey, HVal>(
+    pub fn and_connect(
         self,
-        local_locator: NodeLocator<HKey, HVal>,
+        local_locator: NodeLocator,
     ) -> impl Future<Output = Result<CapTpSession<Reader, Writer>, std::io::Error>> + 'm
     where
         Reader: AsyncRead + Unpin,
         Writer: AsyncWrite + Unpin,
-        NodeLocator<HKey, HVal>: Serialize,
-        OpStartSession<HKey, HVal>: Serialize + 'm,
-        for<'de> NodeLocator<HKey, HVal>: Deserialize<'de>,
-        for<'de> OpStartSession<HKey, HVal>: Deserialize<'de>,
+        NodeLocator: Serialize,
+        OpStartSession: Serialize + 'm,
+        for<'de> NodeLocator: Deserialize<'de>,
+        for<'de> OpStartSession: Deserialize<'de>,
     {
         let local_designator = local_locator.designator.clone();
         tracing::debug!(local = %local_designator, "connecting with OpStartSession");
@@ -94,7 +87,7 @@ impl<'m, Reader, Writer> CapTpSessionBuilder<'m, Reader, Writer> {
 
             tracing::debug!(local = %local_designator, "sent OpStartSession, receiving response");
 
-            let (remote_vkey, remote_loc) = Self::recv_start_session::<HKey, HVal>(&core).await?;
+            let (remote_vkey, remote_loc) = Self::recv_start_session(&core).await?;
 
             Ok(self
                 .manager
@@ -102,12 +95,9 @@ impl<'m, Reader, Writer> CapTpSessionBuilder<'m, Reader, Writer> {
         }
     }
 
-    fn generate_start_msg<HKey, HVal>(
-        &self,
-        local_locator: NodeLocator<HKey, HVal>,
-    ) -> OpStartSession<HKey, HVal>
+    fn generate_start_msg(&self, local_locator: NodeLocator) -> OpStartSession
     where
-        NodeLocator<HKey, HVal>: Serialize,
+        NodeLocator: Serialize,
     {
         let location_sig = self
             .signing_key
@@ -119,18 +109,14 @@ impl<'m, Reader, Writer> CapTpSessionBuilder<'m, Reader, Writer> {
         )
     }
 
-    pub(super) async fn recv_start_session<HKey, HVal>(
+    pub(super) async fn recv_start_session(
         core: &CapTpSessionCore<Reader, Writer>,
-    ) -> Result<(VerifyingKey, NodeLocator<HKey, HVal>), std::io::Error>
+    ) -> Result<(VerifyingKey, NodeLocator), std::io::Error>
     where
         Reader: AsyncRead + Unpin,
-        NodeLocator<HKey, HVal>: Serialize,
-        for<'de> OpStartSession<HKey, HVal>: Deserialize<'de>,
     {
         let mut resp_buf = [0u8; 1024];
-        let response = core
-            .recv_msg::<OpStartSession<HKey, HVal>>(&mut resp_buf)
-            .await?;
+        let response = core.recv_msg::<OpStartSession>(&mut resp_buf).await?;
 
         if response.captp_version != CAPTP_VERSION {
             todo!("handle mismatched captp versions")

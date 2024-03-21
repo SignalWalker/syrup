@@ -37,8 +37,8 @@ impl AsyncDataStream for tokio::net::TcpStream {
     type WriteHalf = tokio::net::tcp::OwnedWriteHalf;
     type Error = std::io::Error;
 
-    fn connect<HKey, HVal>(
-        addr: &NodeLocator<HKey, HVal>,
+    fn connect(
+        addr: &NodeLocator,
     ) -> impl std::future::Future<Output = Result<Self, Self::Error>> + std::marker::Send {
         tokio::net::TcpStream::connect(&addr.designator)
     }

@@ -1,7 +1,11 @@
 use super::{CapTpSessionCore, KeyMap, RecvError, SendError};
 use crate::{
     async_compat::{AsyncRead, AsyncWrite},
-    captp::msg::Operation,
+    captp::{
+        msg::{DescExport, Operation},
+        object::Object,
+        IntoExport, RemoteKey,
+    },
     locator::NodeLocator,
 };
 use dashmap::{DashMap, DashSet};
@@ -10,24 +14,47 @@ use futures::lock::Mutex;
 use std::sync::{atomic::AtomicBool, Arc, RwLock};
 use syrup::{Deserialize, Serialize};
 
+pub struct ExportManager {
+    pub(super) remote_vkey: RemoteKey,
+    /// Objects exported to the remote
+    pub(super) exports: KeyMap<Arc<dyn Object + Send + Sync>>,
+    /// Answers exported to the remote
+    pub(super) answers: DashMap<u64, ()>,
+}
+
+impl ExportManager {
+    fn new(remote_vkey: VerifyingKey) -> Self {
+        Self {
+            remote_vkey,
+            // Bootstrap object handled internally.
+            exports: KeyMap::with_initial(1),
+            answers: DashMap::new(),
+        }
+    }
+
+    pub fn export(&self, obj: impl IntoExport) -> DescExport {
+        let obj = obj.into_export();
+        let reserve = self.exports.reserve();
+        obj.exported(&self.remote_vkey, reserve.key().into());
+        reserve.finalize(obj).into()
+    }
+}
+
 pub(crate) struct CapTpSessionInternal<Reader, Writer> {
     core: CapTpSessionCore<Reader, Writer>,
     pub(super) signing_key: SigningKey,
-    pub(super) remote_vkey: VerifyingKey,
+
+    pub(super) remote_vkey: RemoteKey,
+    pub(super) remote_locator: NodeLocator,
 
     /// Objects imported from the remote
     pub(super) imports: DashSet<u64>,
-    /// Objects exported to the remote
-    pub(super) exports: KeyMap<Arc<dyn crate::captp::object::Object + Send + Sync>>,
-    /// Answers exported to the remote
-    pub(super) answers: DashMap<u64, ()>,
+    pub(super) exports: ExportManager,
 
     pub(super) recv_buf: Mutex<Vec<u8>>,
 
     pub(super) aborted_by_remote: RwLock<Option<String>>,
     pub(super) aborted_locally: AtomicBool,
-
-    pub(super) locator_serialized: Vec<u8>,
 }
 
 #[cfg(feature = "extra-diagnostics")]
@@ -48,28 +75,24 @@ impl<Reader, Writer> std::fmt::Debug for CapTpSessionInternal<Reader, Writer> {
 }
 
 impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
-    pub(super) fn new<HKey, HVal>(
+    pub(super) fn new(
         core: CapTpSessionCore<Reader, Writer>,
         signing_key: SigningKey,
-        remote_vkey: VerifyingKey,
-        locator: &NodeLocator<HKey, HVal>,
-    ) -> Self
-    where
-        NodeLocator<HKey, HVal>: Serialize,
-    {
+        remote_vkey: RemoteKey,
+        remote_locator: NodeLocator,
+    ) -> Self {
         Self {
             core,
             signing_key,
+
             remote_vkey,
+            remote_locator,
+
             imports: DashSet::new(),
-            // Bootstrap object handled internally.
-            exports: KeyMap::with_initial(1),
-            answers: DashMap::new(),
+            exports: ExportManager::new(remote_vkey),
             recv_buf: Mutex::new(Vec::new()),
             aborted_by_remote: RwLock::default(),
             aborted_locally: false.into(),
-
-            locator_serialized: syrup::ser::to_bytes(locator).unwrap(),
         }
     }
 
@@ -159,11 +182,8 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
         }
     }
 
-    pub(super) fn export(&self, val: Arc<dyn crate::captp::object::Object + Send + Sync>) -> u64 {
-        let pos = self.exports.push(val.clone());
-        val.exported(&self.remote_vkey, pos.into());
-        pos
-    }
+    // pub(super) fn export(&self, val: Arc<dyn crate::captp::object::Object + Send + Sync>) -> u64 {
+    // }
 
     pub(super) fn local_abort(&self) {
         self.aborted_locally
@@ -248,7 +268,7 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
                         //     args: del.args,
                         // };
                         // break Ok(Event::Delivery(del));
-                        match self.exports.get(&pos) {
+                        match self.exports.exports.get(&pos) {
                             Some(obj) => obj.deliver_only(self.clone(), del.args).unwrap(),
                             None => break Err(RecvError::UnknownTarget(pos, del.args)),
                         }
@@ -274,7 +294,7 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
                         //     },
                         // };
                         // break Ok(Event::Delivery(del));
-                        match self.exports.get(&pos) {
+                        match self.exports.exports.get(&pos) {
                             Some(obj) => obj
                                 .deliver(
                                     self.clone(),

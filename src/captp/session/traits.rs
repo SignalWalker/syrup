@@ -6,10 +6,31 @@ use futures::FutureExt;
 use syrup::RawSyrup;
 
 use super::{CapTpSessionInternal, Event, RecvError, RemoteKey, SendError};
-use crate::async_compat::{AsyncRead, AsyncWrite};
-use crate::captp::msg::DescImport;
 use crate::captp::msg::{DescExport, OpAbort, OpDeliverOnlySlice, OpDeliverSlice};
 use crate::captp::object::{DeliverError, RemoteBootstrap, RemoteObject, Resolver};
+use crate::captp::{msg::DescImport, ExportManager};
+use crate::{
+    async_compat::{AsyncRead, AsyncWrite},
+    captp::object::Object,
+};
+
+pub trait IntoExport {
+    fn into_export(self) -> Arc<dyn Object + Send + Sync + 'static>;
+}
+
+impl<Obj: Object + Send + Sync + 'static> IntoExport for Arc<Obj> {
+    #[inline(always)]
+    fn into_export(self) -> Arc<dyn Object + Send + Sync + 'static> {
+        self
+    }
+}
+
+impl IntoExport for Arc<dyn Object + Send + Sync + 'static> {
+    #[inline(always)]
+    fn into_export(self) -> Arc<dyn Object + Send + Sync + 'static> {
+        self
+    }
+}
 
 pub(crate) trait CapTpDeliver {
     fn deliver_only<'f>(
@@ -40,7 +61,7 @@ pub(crate) trait CapTpDeliver {
 pub trait AbstractCapTpSession {
     fn signing_key(&self) -> &SigningKey;
     fn remote_vkey(&self) -> &VerifyingKey;
-    fn export(&self, obj: Arc<dyn crate::captp::object::Object + Send + Sync>) -> u64;
+    fn exports(&self) -> &ExportManager;
     fn into_remote_object(self: Arc<Self>, position: DescExport) -> Option<RemoteObject>;
     /// # Safety
     /// - An object must already be exported at `position`.
@@ -86,7 +107,7 @@ where
         args: &'f [syrup::RawSyrup],
     ) -> futures::future::BoxFuture<'f, Result<Vec<syrup::Item>, DeliverError>> {
         let (resolver, answer) = Resolver::new();
-        let pos = self.export(resolver);
+        let pos = self.exports.export(resolver);
         async move {
             self.deliver(position, args, None, DescImport::Object(pos.into()))
                 .await?;
@@ -126,8 +147,9 @@ where
         &self.remote_vkey
     }
 
-    fn export(&self, obj: Arc<dyn crate::captp::object::Object + Send + Sync>) -> u64 {
-        self.export(obj)
+    #[inline]
+    fn exports(&self) -> &ExportManager {
+        &self.exports
     }
 
     fn into_remote_object(self: Arc<Self>, position: DescExport) -> Option<RemoteObject> {

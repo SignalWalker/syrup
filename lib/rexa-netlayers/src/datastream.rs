@@ -4,7 +4,6 @@ use rexa::{
     locator::NodeLocator,
     netlayer::Netlayer,
 };
-use syrup::Serialize;
 
 #[cfg(feature = "datastream-tcp")]
 mod tcp;
@@ -37,8 +36,8 @@ pub trait AsyncDataStream: Sized {
     type ReadHalf;
     type WriteHalf;
     type Error;
-    fn connect<HKey, HVal>(
-        addr: &NodeLocator<HKey, HVal>,
+    fn connect(
+        addr: &NodeLocator,
     ) -> impl std::future::Future<Output = Result<Self, Self::Error>> + std::marker::Send;
     fn split(self) -> (Self::ReadHalf, Self::WriteHalf);
 }
@@ -77,13 +76,10 @@ where
     type Writer = <Listener::Stream as AsyncDataStream>::WriteHalf;
     type Error = Error<Listener::Error, <Listener::Stream as AsyncDataStream>::Error>;
 
-    async fn connect<HintKey: Serialize, HintValue: Serialize>(
+    async fn connect(
         &self,
-        locator: &NodeLocator<HintKey, HintValue>,
-    ) -> Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error>
-    where
-        NodeLocator<HintKey, HintValue>: Sync,
-    {
+        locator: &NodeLocator,
+    ) -> Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error> {
         if let Some(session) = self.manager.read().await.get(&locator.designator) {
             return Ok(session.clone());
         }
@@ -103,7 +99,7 @@ where
             .write()
             .await
             .init_session(reader, writer)
-            .and_connect(self.locator::<String, String>())
+            .and_connect(self.locators().pop().unwrap())
             .await
             .map_err(From::from)
     }
@@ -126,16 +122,16 @@ where
             .write()
             .await
             .init_session(reader, writer)
-            .and_accept(self.locator::<String, String>())
+            .and_accept(self.locators().pop().unwrap())
             .await
             .map_err(From::from)
     }
 
-    fn locator<HKey, HVal>(&self) -> NodeLocator<HKey, HVal> {
-        NodeLocator::new(
+    fn locators(&self) -> Vec<NodeLocator> {
+        vec![NodeLocator::new(
             self.listener.designator().unwrap(),
             Listener::TRANSPORT.to_owned(),
-        )
+        )]
     }
 }
 

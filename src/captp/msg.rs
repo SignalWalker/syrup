@@ -42,9 +42,11 @@ mod import_export {
         }
     }
 
-    impl From<u64> for DescImportObject {
-        fn from(position: u64) -> Self {
-            Self { position }
+    impl From<DescExport> for DescImportObject {
+        fn from(position: DescExport) -> Self {
+            Self {
+                position: position.position,
+            }
         }
     }
 
@@ -310,10 +312,10 @@ mod handoff {
     use syrup::{Deserialize, Serialize};
 
     #[derive(Clone, Deserialize, Serialize)]
-    #[syrup(name = "desc:handoff-give", deserialize_bound = HKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; HVal: Deserialize<'__de>)]
-    pub struct DescHandoffGive<HKey, HVal> {
+    #[syrup(name = "desc:handoff-give")]
+    pub struct DescHandoffGive {
         pub receiver_key: PublicKey,
-        pub exporter_location: NodeLocator<HKey, HVal>,
+        pub exporter_location: NodeLocator,
         #[syrup(with = syrup::bytes::vec)]
         pub session: Vec<u8>,
         #[syrup(with = syrup::bytes::vec)]
@@ -322,7 +324,7 @@ mod handoff {
         pub gift_id: Vec<u8>,
     }
 
-    impl<HKey, HVal> std::fmt::Debug for DescHandoffGive<HKey, HVal>
+    impl std::fmt::Debug for DescHandoffGive
     where
         Self: syrup::Serialize,
     {
@@ -332,17 +334,17 @@ mod handoff {
     }
 
     #[derive(Clone, Deserialize, Serialize)]
-    #[syrup(name = "desc:handoff-receive", deserialize_bound = HKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; HVal: Deserialize<'__de>)]
-    pub struct DescHandoffReceive<HKey, HVal> {
+    #[syrup(name = "desc:handoff-receive")]
+    pub struct DescHandoffReceive {
         #[syrup(with = syrup::bytes::vec)]
         pub receiving_session: Vec<u8>,
         #[syrup(with = syrup::bytes::vec)]
         pub receiving_side: Vec<u8>,
         pub handoff_count: u64,
-        pub signed_give: DescHandoffGive<HKey, HVal>,
+        pub signed_give: DescHandoffGive,
     }
 
-    impl<HKey, HVal> std::fmt::Debug for DescHandoffReceive<HKey, HVal>
+    impl std::fmt::Debug for DescHandoffReceive
     where
         Self: syrup::Serialize,
     {

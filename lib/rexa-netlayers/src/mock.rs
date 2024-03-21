@@ -75,15 +75,12 @@ impl Netlayer for MockNetlayer {
     type Writer = DuplexStream;
     type Error = Error;
 
-    fn connect<HintKey: syrup::Serialize, HintValue: syrup::Serialize>(
+    fn connect(
         &self,
-        locator: &rexa::locator::NodeLocator<HintKey, HintValue>,
+        locator: &rexa::locator::NodeLocator,
     ) -> impl Future<
         Output = Result<rexa::captp::CapTpSession<Self::Reader, Self::Writer>, Self::Error>,
-    > + Send
-    where
-        rexa::locator::NodeLocator<HintKey, HintValue>: Sync,
-    {
+    > + Send {
         let remote_name = &locator.designator;
         async move {
             if let Some(session) = self.manager.read().await.get(remote_name) {
@@ -109,7 +106,7 @@ impl Netlayer for MockNetlayer {
                 .write()
                 .await
                 .init_session(reader, writer)
-                .and_connect(self.locator::<String, String>())
+                .and_connect(self.locators().pop().unwrap())
                 .await
                 .map_err(From::from)
         }
@@ -132,12 +129,12 @@ impl Netlayer for MockNetlayer {
             .write()
             .await
             .init_session(reader, writer)
-            .and_connect(self.locator::<String, String>())
+            .and_connect(self.locators().pop().unwrap())
             .await
             .map_err(From::from)
     }
 
-    fn locator<HintKey, HintValue>(&self) -> rexa::locator::NodeLocator<HintKey, HintValue> {
-        NodeLocator::new(self.name.clone(), "mock".to_owned())
+    fn locators(&self) -> Vec<rexa::locator::NodeLocator> {
+        vec![NodeLocator::new(self.name.clone(), "mock".to_owned())]
     }
 }

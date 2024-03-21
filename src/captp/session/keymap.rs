@@ -1,6 +1,24 @@
 use dashmap::DashMap;
 use std::sync::atomic::AtomicU64;
 
+#[must_use]
+pub(crate) struct Reservation<'map, Value> {
+    key: u64,
+    map: &'map DashMap<u64, Value>,
+}
+
+impl<'m, V> Reservation<'m, V> {
+    #[inline]
+    pub(crate) fn key(&self) -> u64 {
+        self.key
+    }
+
+    pub(crate) fn finalize(self, value: V) -> u64 {
+        self.map.insert(self.key, value);
+        self.key
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct KeyMap<Value> {
     map: DashMap<u64, Value>,
@@ -18,6 +36,13 @@ impl<V> KeyMap<V> {
         use std::sync::atomic::Ordering;
         self.current_key.fetch_add(1, Ordering::AcqRel)
     }
+    pub(crate) fn reserve(&self) -> Reservation<'_, V> {
+        Reservation {
+            key: self.next_key(),
+            map: &self.map,
+        }
+    }
+
     pub(crate) fn push(&self, value: V) -> u64 {
         let key = self.next_key();
         self.map.insert(key, value);

@@ -39,15 +39,15 @@ impl From<ed25519_dalek::Signature> for Signature {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[syrup(name = "op:start-session", deserialize_bound = LocatorHKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; LocatorHVal: Deserialize<'__de>)]
-pub struct OpStartSession<LocatorHKey, LocatorHVal> {
+#[syrup(name = "op:start-session")]
+pub struct OpStartSession {
     pub captp_version: String,
     pub session_pubkey: PublicKey,
-    pub acceptable_location: NodeLocator<LocatorHKey, LocatorHVal>,
+    pub acceptable_location: NodeLocator,
     pub acceptable_location_sig: Signature,
 }
 
-impl<HKey, HVal> std::fmt::Debug for OpStartSession<HKey, HVal>
+impl std::fmt::Debug for OpStartSession
 where
     Self: syrup::Serialize,
 {
@@ -56,10 +56,10 @@ where
     }
 }
 
-impl<HKey, HVal> OpStartSession<HKey, HVal> {
+impl OpStartSession {
     pub fn new(
         session_pubkey: PublicKey,
-        acceptable_location: NodeLocator<HKey, HVal>,
+        acceptable_location: NodeLocator,
         acceptable_location_sig: Signature,
     ) -> Self {
         Self {
@@ -70,10 +70,7 @@ impl<HKey, HVal> OpStartSession<HKey, HVal> {
         }
     }
 
-    pub fn verify_location(&self) -> Result<(), SignatureError>
-    where
-        NodeLocator<HKey, HVal>: Serialize,
-    {
+    pub fn verify_location(&self) -> Result<(), SignatureError> {
         self.session_pubkey.ecc.verify_strict(
             &syrup::ser::to_bytes(&self.acceptable_location).unwrap(),
             &self.acceptable_location_sig.eddsa,

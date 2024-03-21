@@ -48,8 +48,8 @@ impl AsyncDataStream for tokio::net::UnixStream {
     type WriteHalf = tokio::net::unix::OwnedWriteHalf;
     type Error = std::io::Error;
 
-    fn connect<HKey, HVal>(
-        addr: &NodeLocator<HKey, HVal>,
+    fn connect(
+        addr: &NodeLocator,
     ) -> impl std::future::Future<Output = Result<Self, Self::Error>> + std::marker::Send {
         tokio::net::UnixStream::connect(&addr.designator)
     }

@@ -6,16 +6,10 @@ use crate::{attr::ParseNestedMetaExt, Metadata};
 
 pub(crate) enum DeliverInput<'cx> {
     Receiver(Receiver),
-    Session {
+    Mapped {
+        is_resolver: bool,
         map: Expr,
     },
-    Args {
-        map: Expr,
-    },
-    Resolver {
-        map: Expr,
-    },
-    // Iter { map: Expr },
     Syrup {
         ty: Type,
         map: Expr,
@@ -24,8 +18,61 @@ pub(crate) enum DeliverInput<'cx> {
 }
 
 impl<'cx> DeliverInput<'cx> {
+    fn session(span: Span) -> Self {
+        Self::Mapped {
+            is_resolver: false,
+            map: parse_quote_spanned! {span=> session},
+        }
+    }
+
+    fn resolver(span: Span) -> Self {
+        Self::Mapped {
+            is_resolver: true,
+            map: parse_quote_spanned! {span=> resolver},
+        }
+    }
+
+    fn args(span: Span) -> Self {
+        Self::Mapped {
+            is_resolver: false,
+            map: parse_quote_spanned! {span=> args},
+        }
+    }
+
+    fn syrup_inner(context: &'cx Metadata, span: Span, ty: &Type) -> Expr {
+        let error_t = &context.error_t;
+        let syrup = &context.syrup;
+        parse_quote_spanned! {span=>
+            <#ty as #syrup::FromSyrupItem>::from_syrup_item(&arg).map_err(|_| #error_t::unexpected(::std::stringify!(#ty), 0, arg))?
+        }
+    }
+
+    fn syrup(context: &'cx Metadata, span: Span, ty: Type) -> Self {
+        Self::Syrup {
+            map: Self::syrup_inner(context, span, &ty),
+            ty,
+            context,
+        }
+    }
+
+    fn syrup_from(context: &'cx Metadata, span: Span, from: Type, to: Type) -> Self {
+        let mut map = Self::syrup_inner(context, span, &from);
+        map = parse_quote_spanned! {span=> ::std::convert::Into::<#to>::into(#map)};
+        Self::Syrup {
+            map,
+            ty: from,
+            context,
+        }
+    }
+
     fn is_resolver(&self) -> bool {
-        matches!(self, Self::Resolver { .. })
+        matches!(
+            self,
+            Self::Mapped {
+                is_resolver: true,
+                ..
+            }
+        )
     }
 
     fn process(context: &'cx Metadata, input: &mut PatType) -> syn::Result<Self> {
@@ -36,24 +83,28 @@ impl<'cx> DeliverInput<'cx> {
                 obj_attr_index = Some(i);
                 attr.parse_nested_meta(|meta| {
                     if meta.path.is_ident("session") {
-                        res = Some(Self::Session {
-                            map: meta.value_or_else(
-                                || parse_quote_spanned! {meta.path.span()=> session},
-                            )?,
-                        });
+                        res = Some(Self::session(meta.path.span()));
                         Ok(())
                     } else if meta.path.is_ident("args") {
-                        res = Some(Self::Args {
-                            map: meta
-                                .value_or_else(|| parse_quote_spanned! {meta.path.span()=> args})?,
-                        });
+                        res = Some(Self::args(meta.path.span()));
                         Ok(())
                     } else if meta.path.is_ident("resolver") {
-                        res = Some(Self::Resolver {
-                            map: meta.value_or_else(
-                                || parse_quote_spanned! {meta.path.span()=> resolver},
-                            )?,
+                        res = Some(Self::resolver(meta.path.span()));
+                        Ok(())
+                    } else if meta.path.is_ident("mapped") {
+                        res = Some(Self::Mapped {
+                            is_resolver: false,
+                            map: meta.value()?.parse()?,
                         });
+                        Ok(())
+                    } else if meta.path.is_ident("syrup_from") {
+                        let from: Type = meta.value()?.parse()?;
+                        res = Some(Self::syrup_from(
+                            context,
+                            meta.path.span(),
+                            from,
+                            (*input.ty).clone(),
+                        ));
                         Ok(())
                     } else if meta.path.is_ident("syrup") {
                         res = Some(Self::Syrup {
@@ -76,18 +127,7 @@ impl<'cx> DeliverInput<'cx> {
 
         match res {
             Some(arg) => Ok(arg),
-            None => Ok(Self::Syrup {
-                ty: (*input.ty).clone(),
-                map: {
-                    let error_t = &context.error_t;
-                    let syrup = &context.syrup;
-                    let ty = &input.ty;
-                    parse_quote_spanned! {input.span()=>
-                        <#ty as #syrup::FromSyrupItem>::from_syrup_item(&arg).map_err(|_| #error_t::unexpected(::std::stringify!(#ty), 0, arg))?
-                    }
-                },
-                context,
-            }),
+            None => Ok(Self::syrup(context, input.span(), (*input.ty).clone())),
         }
     }
 }
@@ -99,9 +139,7 @@ impl<'cx> ToTokens for DeliverInput<'cx> {
                 let expr: Expr = parse_quote_spanned! {receiver.span()=> self};
                 expr.to_tokens(tokens);
             }
-            DeliverInput::Session { map }
-            | DeliverInput::Args { map }
-            | DeliverInput::Resolver { map } => map.to_tokens(tokens),
+            DeliverInput::Mapped { map, .. } => map.to_tokens(tokens),
             DeliverInput::Syrup {
                 ty,
                 map,

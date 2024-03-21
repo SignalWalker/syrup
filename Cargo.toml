@@ -56,7 +56,7 @@ rand = { version = "^0.8", features = [] }
 ed25519-dalek = { version = "^2", features = ["rand_core"] }
 
 # locators
-# url = "^2.4"
+fluent-uri = "^0.2.0-alpha.0"
 
 # syrup
 syrup = { path = "lib/syrup" }

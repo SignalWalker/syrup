@@ -243,7 +243,11 @@ impl<'input> Field<'input> {
                     }
                     Type::Slice(slice) => type_stack.push(&*slice.elem),
                     Type::TraitObject(_) => todo!("extract generics from trait object"),
-                    Type::Tuple(_) => todo!("extract generics from tuple"),
+                    Type::Tuple(tuple) => {
+                        for ty in &tuple.elems {
+                            type_stack.push(ty);
+                        }
+                    }
                     Type::Verbatim(_) => todo!("extract generics from verbatim"),
                     _ => todo!("extract generics from type {:?}", ty),
                 }

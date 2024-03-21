@@ -1,10 +1,10 @@
+use std::future::Future;
+use std::sync::Arc;
+
 use super::{DeliverError, DeliverOnlyError, RemoteObject};
 use crate::captp::msg::DescExport;
 use crate::captp::msg::{DescHandoffReceive, DescImport};
 use crate::captp::CapTpDeliver;
-use std::future::Future;
-use std::sync::Arc;
-use syrup::Serialize;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FetchError {
@@ -93,15 +93,12 @@ impl RemoteBootstrap {
             .await
     }
 
-    pub async fn withdraw_gift<HKey, HVal>(
+    pub async fn withdraw_gift(
         self: Arc<Self>,
-        handoff_receive: DescHandoffReceive<HKey, HVal>,
+        handoff_receive: DescHandoffReceive,
         answer_pos: Option<u64>,
         resolve_me_desc: DescImport,
-    ) -> Result<(), DeliverError>
-    where
-        DescHandoffReceive<HKey, HVal>: Serialize,
-    {
+    ) -> Result<(), DeliverError> {
         self.base
             .call(
                 "withdraw_gift",

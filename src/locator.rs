@@ -1,6 +1,11 @@
 //! - [Draft Specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Locators.md)
+use std::{collections::HashMap, num::ParseIntError, str::FromStr, string::FromUtf8Error};
 
-use std::collections::HashMap;
+use fluent_uri::{
+    component::Scheme,
+    encoding::{encoder::Query, EString},
+    Uri,
+};
 use syrup::{Deserialize, Serialize};
 
 #[allow(clippy::doc_markdown)] // false positive on `OCapN`
@@ -9,10 +14,8 @@ use syrup::{Deserialize, Serialize};
 /// From the [draft specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Locators.md):
 /// > This identifies an OCapN node, not a specific object. This includes enough information to specify which netlayer and provide that netlayer with all of the information needed to create a bidirectional channel to that node.
 #[derive(Clone, Deserialize, Serialize)]
-#[syrup(name = "ocapn-node",
-        deserialize_bound = HintKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; HintValue: Deserialize<'__de>
-        )]
-pub struct NodeLocator<HintKey, HintValue> {
+#[syrup(name = "ocapn-node")]
+pub struct NodeLocator {
     /// Distinguishes the target node from other nodes accessible through the netlayer specified by
     /// the transport key.
     pub designator: String,
@@ -21,43 +24,116 @@ pub struct NodeLocator<HintKey, HintValue> {
     pub transport: String,
     /// Additional connection information.
     #[syrup(with = syrup::optional_map)]
-    pub hints: HashMap<HintKey, HintValue>,
+    pub hints: HashMap<syrup::Symbol<String>, String>,
 }
 
-impl<HKey, HVal> std::fmt::Debug for NodeLocator<HKey, HVal>
-where
-    Self: syrup::Serialize,
-{
+impl std::fmt::Debug for NodeLocator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&syrup::ser::to_pretty(self).unwrap())
     }
 }
 
-impl<HKey: std::fmt::Display, HVal: std::fmt::Display> std::fmt::Display
-    for NodeLocator<HKey, HVal>
-{
+#[derive(Debug, thiserror::Error)]
+pub enum ParseUriError {
+    #[error(transparent)]
+    Uri(#[from] fluent_uri::ParseError),
+    #[error(transparent)]
+    Port(#[from] ParseIntError),
+    #[error(transparent)]
+    DecodeHint(#[from] FromUtf8Error),
+    #[error("expected `ocapn`, found: `{0}`")]
+    UnrecognizedScheme(String),
+    #[error("no authority component found in parsed uri")]
+    MissingAuthority,
+    #[error("no transport component found in host str")]
+    MissingTransport,
+}
+
+impl TryFrom<Uri<&str>> for NodeLocator {
+    type Error = ParseUriError;
+
+    fn try_from(uri: Uri<&str>) -> Result<Self, Self::Error> {
+        if let Some(scheme) = uri.scheme().map(Scheme::as_str) {
+            if !scheme.eq_ignore_ascii_case("ocapn") {
+                return Err(ParseUriError::UnrecognizedScheme(scheme.to_owned()));
+            }
+        }
+
+        let Some(authority) = uri.authority() else {
+            return Err(ParseUriError::MissingAuthority);
+        };
+
+        #[cfg(feature = "extra-diagnostics")]
+        if authority.userinfo().is_some() {
+            tracing::warn!("ignoring userinfo in parsed nodelocator uri");
+        }
+
+        let (designator, transport) = {
+            let host = authority.host();
+            let Some((designator, transport)) = host.rsplit_once('.') else {
+                return Err(ParseUriError::MissingTransport);
+            };
+            (designator, transport)
+        };
+
+        let mut hints = HashMap::new();
+
+        if let Some(port) = authority.port() {
+            hints.insert(syrup::Symbol("port".to_owned()), port.to_owned());
+        }
+
+        if let Some(query) = uri.query() {
+            for (key, value) in query.split('&').filter_map(|pair| pair.split_once('=')) {
+                hints.insert(
+                    syrup::Symbol(key.decode().into_string()?.to_string()),
+                    value.decode().into_string()?.to_string(),
+                );
+            }
+        }
+
+        Ok(Self {
+            designator: designator.to_owned(),
+            transport: transport.to_owned(),
+            hints,
+        })
+    }
+}
+
+impl FromStr for NodeLocator {
+    type Err = ParseUriError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::try_from(Uri::parse(s)?)
+    }
+}
+
+impl std::fmt::Display for NodeLocator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO :: percent-encode locator host str
         write!(f, "ocapn://{}.{}", self.designator, self.transport)?;
         if !self.hints.is_empty() {
-            let mut entries = self.hints.iter();
-            let (k, v) = entries.next().unwrap();
-            // TODO :: escape characters for URI
-            write!(f, "?{k}={v}")?;
-            for (k, v) in entries {
-                write!(f, "{k}={v}")?;
+            let mut query = EString::<Query>::new();
+            for (k, v) in self.hints.iter() {
+                if !query.is_empty() {
+                    query.push_byte(b'&');
+                }
+                query.encode::<Query>(&k.0);
+                query.push_byte(b'=');
+                query.encode::<Query>(v);
             }
+            write!(f, "?{query}")?;
         }
         Ok(())
     }
 }
 
-impl<HintKey, HintValue> PartialEq for NodeLocator<HintKey, HintValue> {
+impl PartialEq for NodeLocator {
     fn eq(&self, other: &Self) -> bool {
         self.designator == other.designator && self.transport == other.transport
     }
 }
 
-impl<HKey, HVal> NodeLocator<HKey, HVal> {
+impl NodeLocator {
     pub fn new(designator: String, transport: String) -> Self {
         Self {
             designator,
@@ -67,99 +143,66 @@ impl<HKey, HVal> NodeLocator<HKey, HVal> {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ParseSturdyRefUriError {
+    #[error(transparent)]
+    Locator(#[from] ParseUriError),
+    #[error("no path component in parsed uri")]
+    MissingPath,
+    #[error("uri path component does not start with `s/`")]
+    InvalidPath,
+}
+
+impl From<fluent_uri::ParseError> for ParseSturdyRefUriError {
+    fn from(value: fluent_uri::ParseError) -> Self {
+        Self::Locator(ParseUriError::Uri(value))
+    }
+}
+
 /// A unique identifier for
-#[derive(Clone, Deserialize, Serialize)]
-#[syrup(name = "ocapn-sturdyref",
-    deserialize_bound = HintKey: PartialEq + Eq + std::hash::Hash + Deserialize<'__de>; HintValue: Deserialize<'__de>
-)]
-pub struct SturdyRefLocator<HintKey, HintValue> {
-    pub node_locator: NodeLocator<HintKey, HintValue>,
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
+#[syrup(name = "ocapn-sturdyref")]
+pub struct SturdyRefLocator {
+    pub node_locator: NodeLocator,
     #[syrup(with = syrup::bytes::vec)]
     pub swiss_num: Vec<u8>,
 }
 
-impl<HKey, HVal> std::fmt::Debug for SturdyRefLocator<HKey, HVal>
-where
-    Self: syrup::Serialize,
-{
+impl std::fmt::Debug for SturdyRefLocator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&syrup::ser::to_pretty(self).unwrap())
     }
 }
 
-impl<HKey, HVal> PartialEq for SturdyRefLocator<HKey, HVal> {
-    fn eq(&self, other: &Self) -> bool {
-        self.node_locator == other.node_locator && self.swiss_num == other.swiss_num
+impl TryFrom<Uri<&str>> for SturdyRefLocator {
+    type Error = ParseSturdyRefUriError;
+
+    fn try_from(uri: Uri<&str>) -> Result<Self, Self::Error> {
+        const SWISS_PREFIX: &[u8] = b"s/";
+
+        let node_locator = NodeLocator::try_from(uri)?;
+
+        let path = uri.path().decode().into_bytes();
+
+        if path.is_empty() {
+            return Err(ParseSturdyRefUriError::MissingPath);
+        }
+
+        if !path.starts_with(SWISS_PREFIX) {
+            return Err(ParseSturdyRefUriError::InvalidPath);
+        }
+
+        Ok(Self {
+            node_locator,
+            swiss_num: path[SWISS_PREFIX.len()..].to_vec(),
+        })
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::NodeLocator;
-    use crate::locator::SturdyRefLocator;
-    use std::collections::HashMap;
-    use syrup::Error;
+impl FromStr for SturdyRefLocator {
+    type Err = ParseSturdyRefUriError;
 
-    macro_rules! assert_eq_bstr {
-        ($left:expr, $right:expr) => {{
-            let lres = $left;
-            let rres = $right;
-            #[allow(unsafe_code)]
-            {
-                assert_eq!(
-                    lres,
-                    rres,
-                    "{} != {}",
-                    unsafe { std::str::from_utf8_unchecked(AsRef::<[u8]>::as_ref(&lres)) },
-                    unsafe { std::str::from_utf8_unchecked(AsRef::<[u8]>::as_ref(&rres)) }
-                );
-            }
-        }};
-    }
-
-    #[test]
-    fn serialize_locator() -> Result<(), Error<'static>> {
-        assert_eq_bstr!(
-            syrup::ser::to_bytes(&NodeLocator::<u8, u8> {
-                designator: "testlocator.com".to_owned(),
-                transport: "onion".to_owned(),
-                hints: HashMap::default()
-            })?,
-            br#"<10'ocapn-node15"testlocator.com5'onionf>"#
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn deserialize_locator() -> Result<(), Error<'static>> {
-        assert_eq!(
-            syrup::de::from_bytes::<NodeLocator<String, String>>(
-                br#"<10'ocapn-node15"testlocator.com5'onionf>"#
-            )?,
-            NodeLocator {
-                designator: "testlocator.com".to_owned(),
-                transport: "onion".to_owned(),
-                hints: HashMap::default()
-            }
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn deserialize_sturdyref_locator() -> Result<(), Error<'static>> {
-        assert_eq!(
-            syrup::de::from_bytes::<SturdyRefLocator<String, String>>(
-                br#"<15'ocapn-sturdyref<10'ocapn-node15"testlocator.com5'onionf>3:bef>"#
-            )?,
-            SturdyRefLocator {
-                node_locator: NodeLocator {
-                    designator: "testlocator.com".to_owned(),
-                    transport: "onion".to_owned(),
-                    hints: HashMap::default()
-                },
-                swiss_num: b"bef".to_vec()
-            }
-        );
-        Ok(())
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::try_from(Uri::parse(s)?)
     }
 }

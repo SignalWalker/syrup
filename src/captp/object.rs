@@ -24,8 +24,6 @@ pub enum ObjectOnlyError {}
 /// Returned by [`Object`] functions.
 #[derive(Debug, thiserror::Error)]
 pub enum ObjectError {
-    // #[error(transparent)]
-    // Send(#[from] SendError),
     #[error(transparent)]
     Deliver(#[from] DeliverError),
     #[error(transparent)]
@@ -185,6 +183,37 @@ pub enum DeliverError {
     Recv(#[from] OneshotRecvError),
     #[error("promise broken, reason: {0:?}")]
     Broken(syrup::Item),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RemoteError {
+    #[error(transparent)]
+    Deliver(#[from] DeliverError),
+    #[error("missing argument at position {position}: {expected}")]
+    MissingArgument {
+        position: usize,
+        expected: &'static str,
+    },
+    #[error("expected {expected} at position {position}, received: {received:?}")]
+    UnexpectedArgument {
+        expected: &'static str,
+        position: usize,
+        received: syrup::Item,
+    },
+}
+
+impl RemoteError {
+    pub fn missing(position: usize, expected: &'static str) -> Self {
+        Self::MissingArgument { position, expected }
+    }
+
+    pub fn unexpected(expected: &'static str, position: usize, received: syrup::Item) -> Self {
+        Self::UnexpectedArgument {
+            expected,
+            position,
+            received,
+        }
+    }
 }
 
 #[derive(Clone)]

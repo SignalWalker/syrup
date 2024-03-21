@@ -98,8 +98,8 @@ impl<Reader, Writer> CapTpSession<Reader, Writer> {
         &self.base.remote_vkey
     }
 
-    pub fn export(&self, obj: Arc<dyn super::object::Object + Send + Sync>) -> u64 {
-        self.base.export(obj)
+    pub fn export(&self, obj: impl IntoExport) -> DescExport {
+        self.base.exports.export(obj)
     }
 
     pub fn is_aborted(&self) -> bool {

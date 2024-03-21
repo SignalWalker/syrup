@@ -15,21 +15,21 @@ use tor_rtcompat::Runtime;
 use tokio::sync::RwLock;
 
 #[repr(transparent)]
-struct TorLocator<'l, HKey, HVal>(&'l NodeLocator<HKey, HVal>);
+struct TorLocator<'l>(&'l NodeLocator);
 
-impl<'l, HKey, HVal> From<&'l NodeLocator<HKey, HVal>> for TorLocator<'l, HKey, HVal> {
-    fn from(value: &'l NodeLocator<HKey, HVal>) -> Self {
+impl<'l> From<&'l NodeLocator> for TorLocator<'l> {
+    fn from(value: &'l NodeLocator) -> Self {
         Self(value)
     }
 }
 
-impl<'l, HKey, HVal> AsRef<NodeLocator<HKey, HVal>> for TorLocator<'l, HKey, HVal> {
-    fn as_ref(&self) -> &NodeLocator<HKey, HVal> {
+impl<'l> AsRef<NodeLocator> for TorLocator<'l> {
+    fn as_ref(&self) -> &NodeLocator {
         self.0
     }
 }
 
-impl<'l, HKey, HVal> arti_client::IntoTorAddr for TorLocator<'l, HKey, HVal> {
+impl<'l> arti_client::IntoTorAddr for TorLocator<'l> {
     fn into_tor_addr(self) -> Result<arti_client::TorAddr, arti_client::TorAddrError> {
         format!("{}.onion", self.0.designator)
             .as_str()
@@ -65,7 +65,7 @@ pub struct OnionNetlayer<AsyncRuntime: Runtime> {
 impl<Rt: Runtime> std::fmt::Debug for OnionNetlayer<Rt> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OnionNetlayer")
-            .field("locator", &self.locator::<String, String>())
+            .field("locator", &self.locators().pop().unwrap())
             .finish_non_exhaustive()
     }
 }
@@ -107,14 +107,11 @@ impl<R: Runtime> Netlayer for OnionNetlayer<R> {
     type Error = Error;
 
     #[inline]
-    fn connect<HintKey: syrup::Serialize, HintValue: syrup::Serialize>(
+    fn connect(
         &self,
-        locator: &NodeLocator<HintKey, HintValue>,
-    ) -> impl Future<Output = Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error>>
-    where
-        NodeLocator<HintKey, HintValue>: Sync,
-    {
-        let local_locator = self.locator::<String, String>();
+        locator: &NodeLocator,
+    ) -> impl Future<Output = Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error>> {
+        let local_locator = self.locators().pop().unwrap();
         async move {
             let (reader, writer) = self
                 .client
@@ -147,12 +144,12 @@ impl<R: Runtime> Netlayer for OnionNetlayer<R> {
             .write()
             .await
             .init_session(reader, writer)
-            .and_accept(self.locator::<String, String>())
+            .and_accept(self.locators().pop().unwrap())
             .await
             .map_err(From::from)
     }
 
-    fn locator<HKey, HVal>(&self) -> NodeLocator<HKey, HVal> {
+    fn locators(&self) -> Vec<NodeLocator> {
         // HACK :: there's probably a better way to do this
         let mut name = self
             .service
@@ -160,6 +157,6 @@ impl<R: Runtime> Netlayer for OnionNetlayer<R> {
             .expect("OnionNetlayer should know own onion service name")
             .to_string();
         name.truncate(name.len() - ".onion".len());
-        NodeLocator::new(name, "onion".to_string())
+        vec![NodeLocator::new(name, "onion".to_string())]
     }
 }

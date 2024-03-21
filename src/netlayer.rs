@@ -2,7 +2,6 @@
 
 use crate::{captp::CapTpSession, locator::NodeLocator};
 use std::future::Future;
-use syrup::Serialize;
 
 pub trait Netlayer {
     type Reader;
@@ -10,13 +9,12 @@ pub trait Netlayer {
     type Error;
 
     /// Attempt to open a new connection to the specified locator.
-    fn connect<HintKey: Serialize, HintValue: Serialize>(
+    fn connect(
         &self,
-        locator: &NodeLocator<HintKey, HintValue>,
+        locator: &NodeLocator,
     ) -> impl Future<Output = Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error>> + Send
     where
-        Self: Sized,
-        NodeLocator<HintKey, HintValue>: Sync;
+        Self: Sized;
 
     /// Accept a connection.
     fn accept(
@@ -25,8 +23,8 @@ pub trait Netlayer {
     where
         Self: Sized;
 
-    /// Get a locator pointing to this node.
-    fn locator<HintKey, HintValue>(&self) -> NodeLocator<HintKey, HintValue>;
+    /// Get locators pointing to this node.
+    fn locators(&self) -> Vec<NodeLocator>;
 
     /// Get a [Stream](futures::stream::Stream) of accepted connections.
     fn stream(
