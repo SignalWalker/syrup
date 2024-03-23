@@ -1,10 +1,15 @@
 //! - [Draft Specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Locators.md)
-use std::{collections::HashMap, num::ParseIntError, str::FromStr, string::FromUtf8Error};
+use std::{
+    borrow::Borrow, collections::HashMap, num::ParseIntError, str::FromStr, string::FromUtf8Error,
+};
 
 use fluent_uri::{
-    component::Scheme,
-    encoding::{encoder::Query, EString},
-    Uri,
+    component::{Host, Scheme},
+    encoding::{
+        encoder::{Query, RegName, Userinfo},
+        EStr, EString,
+    },
+    Builder, Uri,
 };
 use syrup::{Deserialize, Serialize};
 
@@ -13,7 +18,7 @@ use syrup::{Deserialize, Serialize};
 ///
 /// From the [draft specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Locators.md):
 /// > This identifies an OCapN node, not a specific object. This includes enough information to specify which netlayer and provide that netlayer with all of the information needed to create a bidirectional channel to that node.
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, Eq)]
 #[syrup(name = "ocapn-node")]
 pub struct NodeLocator {
     /// Distinguishes the target node from other nodes accessible through the netlayer specified by
@@ -30,6 +35,19 @@ pub struct NodeLocator {
 impl std::fmt::Debug for NodeLocator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&syrup::ser::to_pretty(self).unwrap())
+    }
+}
+
+impl PartialEq for NodeLocator {
+    fn eq(&self, other: &Self) -> bool {
+        // doing it this way to ensure that it agrees with the hash impl
+        syrup::ser::to_bytes(self).unwrap() == syrup::ser::to_bytes(other).unwrap()
+    }
+}
+
+impl std::hash::Hash for NodeLocator {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        syrup::ser::to_bytes(self).unwrap().hash(state);
     }
 }
 
@@ -63,11 +81,6 @@ impl TryFrom<Uri<&str>> for NodeLocator {
             return Err(ParseUriError::MissingAuthority);
         };
 
-        #[cfg(feature = "extra-diagnostics")]
-        if authority.userinfo().is_some() {
-            tracing::warn!("ignoring userinfo in parsed nodelocator uri");
-        }
-
         let (designator, transport) = {
             let host = authority.host();
             let Some((designator, transport)) = host.rsplit_once('.') else {
@@ -77,6 +90,13 @@ impl TryFrom<Uri<&str>> for NodeLocator {
         };
 
         let mut hints = HashMap::new();
+
+        if let Some(userinfo) = authority.userinfo() {
+            hints.insert(
+                syrup::Symbol("userinfo".to_owned()),
+                userinfo.decode().into_string()?.to_string(),
+            );
+        }
 
         if let Some(port) = authority.port() {
             hints.insert(syrup::Symbol("port".to_owned()), port.to_owned());
@@ -107,29 +127,21 @@ impl FromStr for NodeLocator {
     }
 }
 
-impl std::fmt::Display for NodeLocator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO :: percent-encode locator host str
-        write!(f, "ocapn://{}.{}", self.designator, self.transport)?;
-        if !self.hints.is_empty() {
-            let mut query = EString::<Query>::new();
-            for (k, v) in self.hints.iter() {
-                if !query.is_empty() {
-                    query.push_byte(b'&');
-                }
-                query.encode::<Query>(&k.0);
-                query.push_byte(b'=');
-                query.encode::<Query>(v);
-            }
-            write!(f, "?{query}")?;
-        }
-        Ok(())
+impl From<&NodeLocator> for Uri<String> {
+    fn from(loc: &NodeLocator) -> Self {
+        loc.build_uri(EStr::new(""))
     }
 }
 
-impl PartialEq for NodeLocator {
-    fn eq(&self, other: &Self) -> bool {
-        self.designator == other.designator && self.transport == other.transport
+impl From<NodeLocator> for Uri<String> {
+    fn from(loc: NodeLocator) -> Self {
+        Self::from(&loc)
+    }
+}
+
+impl std::fmt::Display for NodeLocator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Uri::from(self).fmt(f)
     }
 }
 
@@ -140,6 +152,77 @@ impl NodeLocator {
             transport,
             hints: HashMap::new(),
         }
+    }
+
+    pub fn encoded_query(&self) -> Option<EString<Query>> {
+        if self.hints.is_empty() {
+            None
+        } else {
+            let mut query = EString::<Query>::new();
+            for (k, v) in self.hints.iter() {
+                if k == "port" || k == "userinfo" {
+                    // these are encoded as part of the authority uri component
+                    continue;
+                }
+                if !query.is_empty() {
+                    query.push_byte(b'&');
+                }
+                query.encode::<Query>(&k.0);
+                query.push_byte(b'=');
+                query.encode::<Query>(v);
+            }
+            if query.is_empty() {
+                None
+            } else {
+                Some(query)
+            }
+        }
+    }
+
+    pub fn encoded_userinfo(&self) -> Option<EString<Userinfo>> {
+        self.hint("userinfo").map(|info| {
+            let mut estr = EString::<Userinfo>::new();
+            estr.encode::<Userinfo>(info);
+            estr
+        })
+    }
+
+    pub fn encoded_host(&self) -> EString<RegName> {
+        let mut estr = EString::<RegName>::new();
+        estr.encode::<RegName>(&self.designator);
+        estr.push_byte(b'.');
+        estr.encode::<RegName>(&self.transport);
+        estr
+    }
+
+    pub fn hint<Q>(&self, key: &Q) -> Option<&String>
+    where
+        syrup::Symbol<String>: Borrow<Q>,
+        Q: std::hash::Hash + Eq + ?Sized,
+    {
+        self.hints.get(key)
+    }
+
+    pub fn hint_as<V: FromStr, Q>(&self, key: &Q) -> Option<Result<V, V::Err>>
+    where
+        syrup::Symbol<String>: Borrow<Q>,
+        Q: std::hash::Hash + Eq + ?Sized,
+    {
+        self.hints.get(key).map(|h| V::from_str(h))
+    }
+
+    fn build_uri(&self, path: &EStr<fluent_uri::encoding::encoder::Path>) -> Uri<String> {
+        let reg_name = self.encoded_host();
+        Uri::builder()
+            .scheme(Scheme::new("ocapn"))
+            .authority(|b| {
+                b.optional(Builder::userinfo, self.encoded_userinfo().as_deref())
+                    .host(Host::RegName(&reg_name))
+                    .optional(Builder::port, self.hints.get("port").map(String::as_str))
+            })
+            .path(path)
+            .optional(Builder::query, self.encoded_query().as_deref())
+            .build()
     }
 }
 
@@ -160,12 +243,29 @@ impl From<fluent_uri::ParseError> for ParseSturdyRefUriError {
 }
 
 /// A unique identifier for
-#[derive(Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Deserialize, Serialize)]
 #[syrup(name = "ocapn-sturdyref")]
 pub struct SturdyRefLocator {
     pub node_locator: NodeLocator,
     #[syrup(with = syrup::bytes::vec)]
     pub swiss_num: Vec<u8>,
+}
+
+impl SturdyRefLocator {
+    pub fn new(node_locator: NodeLocator, swiss_num: Vec<u8>) -> Self {
+        Self {
+            node_locator,
+            swiss_num,
+        }
+    }
+
+    pub fn encoded_path(&self) -> EString<fluent_uri::encoding::encoder::Path> {
+        use fluent_uri::encoding::encoder::Path;
+        let mut path = EString::<Path>::new();
+        path.push_estr(EStr::new("/s/"));
+        path.encode::<Path>(&self.swiss_num);
+        path
+    }
 }
 
 impl std::fmt::Debug for SturdyRefLocator {
@@ -178,7 +278,7 @@ impl TryFrom<Uri<&str>> for SturdyRefLocator {
     type Error = ParseSturdyRefUriError;
 
     fn try_from(uri: Uri<&str>) -> Result<Self, Self::Error> {
-        const SWISS_PREFIX: &[u8] = b"s/";
+        const SWISS_PREFIX: &[u8] = b"/s/";
 
         let node_locator = NodeLocator::try_from(uri)?;
 
@@ -204,5 +304,24 @@ impl FromStr for SturdyRefLocator {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::try_from(Uri::parse(s)?)
+    }
+}
+
+impl From<&SturdyRefLocator> for Uri<String> {
+    fn from(loc: &SturdyRefLocator) -> Self {
+        let path = loc.encoded_path();
+        loc.node_locator.build_uri(&path)
+    }
+}
+
+impl From<SturdyRefLocator> for Uri<String> {
+    fn from(loc: SturdyRefLocator) -> Self {
+        Self::from(&loc)
+    }
+}
+
+impl std::fmt::Display for SturdyRefLocator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Uri::from(self).fmt(f)
     }
 }

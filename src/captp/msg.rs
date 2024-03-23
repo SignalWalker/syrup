@@ -144,7 +144,7 @@ pub use import_export::*;
 
 mod deliver {
     use super::{DescExport, DescImport};
-    use syrup::{ser::SerializeRecord, Deserialize, Serialize};
+    use syrup::{ser::SerializeRecord, Deserialize, RawSyrup, Serialize};
 
     #[derive(Clone, Copy)]
     pub struct OpDeliverOnlySlice<'args, Arg> {
@@ -293,11 +293,9 @@ mod deliver {
             answer_pos: Option<u64>,
             resolve_me_desc: DescImport,
         ) -> Result<Self, syrup::Error<'static>> {
-            let mut serialized_args = syrup::raw_syrup![&syrup::Symbol::from(ident.as_ref()),];
-            serialized_args.extend(args.into_iter().map(syrup::RawSyrup::from_serialize));
             Ok(Self::new(
                 position,
-                serialized_args,
+                RawSyrup::vec_from_ident_iter(ident, args.into_iter())?,
                 answer_pos,
                 resolve_me_desc,
             ))

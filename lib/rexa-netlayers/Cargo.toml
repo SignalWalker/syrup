@@ -30,11 +30,14 @@ tor-rtcompat = { version = "^0.10", git = "https://gitlab.torproject.org/tpo/cor
 tor-hsservice = { version = "^0.8", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
 tor-cell = { version = "^0.16", git = "https://gitlab.torproject.org/tpo/core/arti", optional = true }
 
+#datastream-tcp
+## mio
+mio = { version = "^0.8", optional = true }
 
 [features]
 default = []
 mock = ["tokio", "dep:lazy_static"]
-datastream = ["dep:syrup", "dep:thiserror", "dep:tracing"]
+datastream = ["tokio", "dep:syrup", "dep:thiserror", "dep:tracing"]
 datastream-tcp = ["datastream", "tokio", "tokio/net"]
 datastream-unix = ["datastream", "tokio"]
 onion = [
@@ -46,7 +49,7 @@ onion = [
   "tor-rtcompat/tokio",
 ]
 
-tokio = ["dep:tokio", "rexa/tokio"]
+tokio = ["dep:tokio", "dep:mio", "rexa/tokio"]
 
 [lints]
 workspace = true

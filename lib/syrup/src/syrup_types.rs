@@ -1,11 +1,14 @@
+use std::{borrow::Borrow, ops::Deref};
+
 use crate::{
     de::{RecordFieldAccess, Visitor},
     ser::{ByteSerializer, SerializeDict, SerializeRecord, SerializeSeq, SerializeSet, Serializer},
     Deserialize, Serialize,
 };
 
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Symbol<T>(pub T);
+pub struct Symbol<T: ?Sized>(pub T);
 
 impl From<Symbol<String>> for String {
     #[inline]
@@ -21,17 +24,10 @@ impl From<String> for Symbol<String> {
     }
 }
 
-impl<'s> From<&'s str> for Symbol<&'s str> {
+impl<'inner, Inner: Borrow<str>> From<&'inner Inner> for Symbol<&'inner str> {
     #[inline]
-    fn from(value: &'s str) -> Self {
-        Self(value)
-    }
-}
-
-impl<'s> From<&'s String> for Symbol<&'s str> {
-    #[inline]
-    fn from(value: &'s String) -> Self {
-        Self(value.as_str())
+    fn from(value: &'inner Inner) -> Self {
+        Self(value.borrow())
     }
 }
 
@@ -39,6 +35,24 @@ impl<'s> From<Symbol<&'s str>> for &'s str {
     #[inline]
     fn from(value: Symbol<&'s str>) -> Self {
         value.0
+    }
+}
+
+impl<Inner: Borrow<str>> Borrow<str> for Symbol<Inner> {
+    fn borrow(&self) -> &str {
+        self.0.borrow()
+    }
+}
+
+impl<Inner: PartialEq<str>> PartialEq<str> for Symbol<Inner> {
+    fn eq(&self, other: &str) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl<Inner: PartialEq<String>> PartialEq<String> for Symbol<Inner> {
+    fn eq(&self, other: &String) -> bool {
+        self.0.eq(other)
     }
 }
 

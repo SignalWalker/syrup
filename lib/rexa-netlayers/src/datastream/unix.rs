@@ -21,22 +21,24 @@ impl AsyncStreamListener for tokio::net::UnixListener {
     fn accept(
         &self,
     ) -> impl std::future::Future<Output = Result<(Self::Stream, Self::AddressOutput), Self::Error>>
-           + std::marker::Send {
-        tokio::net::UnixListener::accept(self)
+           + std::marker::Send
+           + Unpin {
+        use futures::FutureExt;
+        tokio::net::UnixListener::accept(self).boxed()
     }
 
     fn local_addr(&self) -> Result<Self::AddressOutput, Self::Error> {
         tokio::net::UnixListener::local_addr(self)
     }
 
-    fn designator(&self) -> Result<String, Self::Error> {
+    fn locator(&self) -> Result<NodeLocator, Self::Error> {
         // FIX :: tokio unix socketaddr does not suport as_abstract_namespace
         match self
             .local_addr()?
             .as_pathname()
             .and_then(std::path::Path::to_str)
         {
-            Some(p) => Ok(p.to_owned()),
+            Some(p) => Ok(NodeLocator::new(p.to_owned(), Self::TRANSPORT.to_owned())),
             None => todo!("handle unnamed unix streams"),
         }
     }

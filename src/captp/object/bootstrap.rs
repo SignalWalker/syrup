@@ -76,11 +76,11 @@ impl RemoteBootstrap {
             .map_err(From::from)
     }
 
-    pub async fn fetch_with<'swiss, Obj: Fetch>(
-        &self,
+    pub fn fetch_with<'swiss, Obj: Fetch + 'swiss>(
+        &'swiss self,
         swiss: Obj::Swiss<'swiss>,
-    ) -> Result<Obj, FetchError> {
-        Obj::fetch(self, swiss).await
+    ) -> impl Future<Output = Result<Obj, FetchError>> + Send + 'swiss {
+        Obj::fetch(self, swiss)
     }
 
     pub async fn deposit_gift(

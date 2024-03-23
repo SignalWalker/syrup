@@ -27,9 +27,10 @@ pub trait AsyncStreamListener: Sized {
     fn accept(
         &self,
     ) -> impl std::future::Future<Output = Result<(Self::Stream, Self::AddressOutput), Self::Error>>
-           + std::marker::Send;
+           + std::marker::Send
+           + Unpin;
     fn local_addr(&self) -> Result<Self::AddressOutput, Self::Error>;
-    fn designator(&self) -> Result<String, Self::Error>;
+    fn locator(&self) -> Result<NodeLocator, Self::Error>;
 }
 
 pub trait AsyncDataStream: Sized {
@@ -54,7 +55,7 @@ pub enum Error<Listener, Stream> {
 
 #[derive(Debug)]
 pub struct DataStreamNetlayer<Listener: AsyncStreamListener> {
-    listener: Listener,
+    listeners: Vec<Listener>,
     manager: RwLock<
         CapTpSessionManager<
             <Listener::Stream as AsyncDataStream>::ReadHalf,
@@ -85,7 +86,7 @@ where
         }
 
         tracing::debug!(
-            local = %self.listener.designator().map_err(Error::Listener)?,
+            local = ?self.locators(),
             remote = %syrup::ser::to_pretty(locator).unwrap(),
             "starting connection"
         );
@@ -106,17 +107,17 @@ where
 
     async fn accept(&self) -> Result<CapTpSession<Self::Reader, Self::Writer>, Self::Error> {
         tracing::debug!(
-            local = %self.listener.designator().map_err(Error::Listener)?,
+            local = ?self.locators(),
             "accepting connection"
         );
 
-        let (reader, writer) = self
-            .listener
-            .accept()
-            .await
-            .map_err(Error::Listener)?
-            .0
-            .split();
+        let (reader, writer) =
+            futures::future::select_all(self.listeners.iter().map(|listener| listener.accept()))
+                .await
+                .0
+                .map_err(Error::Listener)?
+                .0
+                .split();
 
         self.manager
             .write()
@@ -128,24 +129,31 @@ where
     }
 
     fn locators(&self) -> Vec<NodeLocator> {
-        vec![NodeLocator::new(
-            self.listener.designator().unwrap(),
-            Listener::TRANSPORT.to_owned(),
-        )]
+        self.listeners
+            .iter()
+            .map(|l| l.locator().unwrap())
+            .collect()
     }
 }
 
 impl<Listener: AsyncStreamListener> DataStreamNetlayer<Listener> {
-    pub async fn bind(addr: Listener::AddressInput<'_>) -> Result<Self, Listener::Error> {
-        let listener = Listener::bind(addr).await?;
-        Ok(Self {
-            listener,
+    pub fn new(listeners: Vec<Listener>) -> Self {
+        Self {
+            listeners,
             manager: RwLock::new(CapTpSessionManager::new()),
-        })
+        }
     }
 
-    #[inline]
-    pub fn local_addr(&self) -> Result<Listener::AddressOutput, Listener::Error> {
-        self.listener.local_addr()
+    pub async fn bind(addr: Listener::AddressInput<'_>) -> Result<Self, Listener::Error> {
+        let listener = Listener::bind(addr).await?;
+        Ok(Self::new(vec![listener]))
+    }
+
+    pub async fn push_bind(
+        &mut self,
+        addr: Listener::AddressInput<'_>,
+    ) -> Result<(), Listener::Error> {
+        self.listeners.push(Listener::bind(addr).await?);
+        Ok(())
     }
 }
