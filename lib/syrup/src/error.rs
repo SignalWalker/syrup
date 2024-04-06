@@ -31,8 +31,13 @@ pub struct Error<'input> {
 }
 
 impl<'input> std::fmt::Display for Error<'input> {
-    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "syrup error: {:?}, input: {:?}",
+            &self.kind,
+            self.input.map(String::from_utf8_lossy)
+        )
     }
 }
 

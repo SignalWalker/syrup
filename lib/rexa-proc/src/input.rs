@@ -35,7 +35,7 @@ impl<'cx> DeliverInput<'cx> {
     fn args(span: Span) -> Self {
         Self::Mapped {
             is_resolver: false,
-            map: parse_quote_spanned! {span=> args},
+            map: parse_quote_spanned! {span=> args.into()},
         }
     }
 
@@ -43,7 +43,7 @@ impl<'cx> DeliverInput<'cx> {
         let error_t = &context.error_t;
         let syrup = &context.syrup;
         parse_quote_spanned! {span=>
-            <#ty as #syrup::FromSyrupItem>::from_syrup_item(&arg).map_err(|_| #error_t::unexpected(::std::stringify!(#ty), 0, arg))?
+            <#ty as #syrup::FromSyrupItem>::from_syrup_item(&arg).map_err(|_| #error_t::unexpected(::std::stringify!(#ty), args_pos - 1, arg))?
         }
     }
 
@@ -146,9 +146,9 @@ impl<'cx> ToTokens for DeliverInput<'cx> {
                 context: Metadata { error_t, .. },
             } => {
                 quote_spanned! {ty.span()=>
-                    match args.pop() {
-                        Some(arg) => #map,
-                        None => return ::std::result::Result::Err(#error_t::missing(0, ::std::stringify!(#ty))), // ::std::todo!(::std::concat!("missing argument: ", #id, ": ", ::std::stringify!(#ty)))
+                    match args.pop_front() {
+                        Some(arg) => { args_pos += 1; #map },
+                        None => return ::std::result::Result::Err(#error_t::missing(args_pos, ::std::stringify!(#ty))), // ::std::todo!(::std::concat!("missing argument: ", #id, ": ", ::std::stringify!(#ty)))
                     }
                 }
                 .to_tokens(tokens);

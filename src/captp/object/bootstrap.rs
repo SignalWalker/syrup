@@ -37,7 +37,9 @@ impl RemoteBootstrap {
 }
 
 impl RemoteBootstrap {
+    #[tracing::instrument(skip(self), fields(swiss_number = crate::hash(&swiss_number)))]
     pub async fn fetch(&self, swiss_number: &[u8]) -> Result<RemoteObject, FetchError> {
+        tracing::trace!("fetching object");
         let mut args = self
             .base
             .call_and("fetch", &[syrup::Bytes(swiss_number)])
@@ -53,18 +55,14 @@ impl RemoteBootstrap {
         }
     }
 
+    #[tracing::instrument(skip(self), fields(swiss_number = crate::hash(&swiss_number)))]
     pub async fn fetch_to(
         &self,
         swiss_number: &[u8],
         answer_pos: Option<u64>,
         resolve_me_desc: DescImport,
     ) -> Result<(), DeliverError> {
-        tracing::trace!(
-            swiss_hash = crate::hash(&swiss_number),
-            answer_pos,
-            ?resolve_me_desc,
-            "fetching object"
-        );
+        tracing::trace!("fetching object");
         self.base
             .call(
                 "fetch",

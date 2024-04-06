@@ -56,14 +56,12 @@ impl ObjectError {
 }
 
 pub trait Object {
-    // TODO :: Better error type
     fn deliver_only(
         &self,
         session: Arc<dyn AbstractCapTpSession + Send + Sync>,
         args: Vec<syrup::Item>,
     ) -> Result<(), ObjectError>;
 
-    // TODO :: Better error type
     fn deliver(
         &self,
         session: Arc<dyn AbstractCapTpSession + Send + Sync>,
@@ -118,21 +116,32 @@ impl Resolver {
 #[crate::impl_object(rexa = crate, tracing = ::tracing)]
 impl Resolver {
     #[deliver()]
-    fn fulfill(&self, #[arg(args)] args: Vec<syrup::Item>) -> Result<&'static str, &'static str> {
+    async fn fulfill(
+        &self,
+        #[arg(args)] args: Vec<syrup::Item>,
+        #[arg(resolver)] resolver: GenericResolver,
+    ) -> Result<(), ObjectError> {
         match self.resolve(Ok(args)) {
-            Ok(_) => Ok("promise fulfilled"),
-            Err(_) => Err("promise already resolved"),
+            Ok(_) => Ok(()),
+            Err(_) => resolver
+                .break_promise("promise already resolved")
+                .await
+                .map_err(From::from),
         }
     }
 
     #[deliver(symbol = "break")]
-    fn break_promise(
+    async fn break_promise(
         &self,
         #[arg(syrup = arg)] reason: syrup::Item,
-    ) -> Result<&'static str, &'static str> {
+        #[arg(resolver)] resolver: GenericResolver,
+    ) -> Result<(), ObjectError> {
         match self.resolve(Err(reason)) {
-            Ok(_) => Ok("promise broken"),
-            Err(_) => Err("promise already resolved"),
+            Ok(_) => Ok(()),
+            Err(_) => resolver
+                .break_promise("promise already resolved")
+                .await
+                .map_err(From::from),
         }
     }
 }
@@ -238,6 +247,10 @@ impl RemoteObject {
         Self { session, position }
     }
 
+    pub fn session(&self) -> &Arc<dyn CapTpDeliver + Send + Sync + 'static> {
+        &self.session
+    }
+
     pub fn remote_vkey(&self) -> RemoteKey {
         self.session.remote_vkey()
     }
@@ -336,14 +349,14 @@ impl RemoteObject {
             .await
     }
 
-    pub fn get_remote_object(&self, position: DescExport) -> Option<RemoteObject> {
-        self.session.clone().into_remote_object(position)
-    }
-
-    /// # Safety
-    /// - There must be an object exported at `position`.
-    #[allow(unsafe_code)]
-    pub unsafe fn get_remote_object_unchecked(&self, position: DescExport) -> RemoteObject {
-        unsafe { self.session.clone().into_remote_object_unchecked(position) }
-    }
+    // pub fn get_remote_object(&self, position: DescExport) -> Option<RemoteObject> {
+    //     self.session.clone().into_remote_object(position)
+    // }
+    //
+    // /// # Safety
+    // /// - There must be an object exported at `position`.
+    // #[allow(unsafe_code)]
+    // pub unsafe fn get_remote_object_unchecked(&self, position: DescExport) -> RemoteObject {
+    //     unsafe { self.session.clone().into_remote_object_unchecked(position) }
+    // }
 }

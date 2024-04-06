@@ -13,6 +13,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::lock::Mutex;
 use std::sync::{atomic::AtomicBool, Arc, RwLock};
 use syrup::{Deserialize, Serialize};
+use tracing::Instrument;
 
 pub struct ExportManager {
     pub(super) remote_vkey: RemoteKey,
@@ -269,7 +270,13 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
                         // };
                         // break Ok(Event::Delivery(del));
                         match self.exports.exports.get(&pos) {
-                            Some(obj) => obj.deliver_only(self.clone(), del.args).unwrap(),
+                            Some(obj) => {
+                                let span = tracing::info_span!("deliver_only");
+                                let _guard = span.enter();
+                                if let Err(error) = obj.deliver_only(self.clone(), del.args) {
+                                    tracing::error!(pos, %error, "deliver_only");
+                                }
+                            }
                             None => break Err(RecvError::UnknownTarget(pos, del.args)),
                         }
                     }
@@ -295,18 +302,23 @@ impl<Reader, Writer> CapTpSessionInternal<Reader, Writer> {
                         // };
                         // break Ok(Event::Delivery(del));
                         match self.exports.exports.get(&pos) {
-                            Some(obj) => obj
-                                .deliver(
-                                    self.clone(),
-                                    del.args,
-                                    crate::captp::GenericResolver::new(
+                            Some(obj) => {
+                                if let Err(error) = obj
+                                    .deliver(
                                         self.clone(),
-                                        del.answer_pos,
-                                        del.resolve_me_desc,
-                                    ),
-                                )
-                                .await
-                                .unwrap(),
+                                        del.args,
+                                        crate::captp::GenericResolver::new(
+                                            self.clone(),
+                                            del.answer_pos,
+                                            del.resolve_me_desc,
+                                        ),
+                                    )
+                                    .instrument(tracing::info_span!("deliver").or_current())
+                                    .await
+                                {
+                                    tracing::error!(pos, %error, "deliver");
+                                }
+                            }
                             None => break Err(RecvError::UnknownTarget(pos, del.args)),
                         }
                     }

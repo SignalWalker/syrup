@@ -1,12 +1,18 @@
 //! - [Draft Specification](https://github.com/ocapn/ocapn/blob/main/draft-specifications/Locators.md)
 use std::{
-    borrow::Borrow, collections::HashMap, num::ParseIntError, str::FromStr, string::FromUtf8Error,
+    borrow::Borrow,
+    collections::HashMap,
+    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    num::ParseIntError,
+    ops::{Index, IndexMut},
+    str::FromStr,
+    string::FromUtf8Error,
 };
 
 use fluent_uri::{
     component::{Host, Scheme},
     encoding::{
-        encoder::{Query, RegName, Userinfo},
+        encoder::{self, Query, RegName, Userinfo},
         EStr, EString,
     },
     Builder, Uri,
@@ -145,6 +151,28 @@ impl std::fmt::Display for NodeLocator {
     }
 }
 
+impl<Q> Index<&Q> for NodeLocator
+where
+    Q: Eq + std::hash::Hash + ?Sized,
+    syrup::Symbol<String>: Borrow<Q>,
+{
+    type Output = String;
+
+    fn index(&self, index: &Q) -> &Self::Output {
+        &self.hints[index]
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AsSocketAddrError {
+    #[error(transparent)]
+    ParseAddr(#[from] AddrParseError),
+    #[error("locator does not contain port hint")]
+    MissingPort,
+    #[error(transparent)]
+    ParsePort(#[from] ParseIntError),
+}
+
 impl NodeLocator {
     pub fn new(designator: String, transport: String) -> Self {
         Self {
@@ -211,12 +239,34 @@ impl NodeLocator {
         self.hints.get(key).map(|h| V::from_str(h))
     }
 
+    pub fn ipv6_from_designator(&self) -> Result<Ipv6Addr, AddrParseError> {
+        Ipv6Addr::from_str(&self.designator)
+    }
+
+    pub fn ipv4_from_designator(&self) -> Result<Ipv4Addr, AddrParseError> {
+        Ipv4Addr::from_str(&self.designator)
+    }
+
+    pub fn ip_from_designator(&self) -> Result<IpAddr, AddrParseError> {
+        IpAddr::from_str(&self.designator)
+    }
+
+    pub fn as_socket_addr(&self) -> Result<SocketAddr, AsSocketAddrError> {
+        Ok(SocketAddr::new(
+            self.ip_from_designator()?,
+            self.hint_as("port")
+                .ok_or(AsSocketAddrError::MissingPort)??,
+        ))
+    }
+
     fn build_uri(&self, path: &EStr<fluent_uri::encoding::encoder::Path>) -> Uri<String> {
-        let reg_name = self.encoded_host();
         Uri::builder()
             .scheme(Scheme::new("ocapn"))
             .authority(|b| {
+                let reg_name = self.encoded_host();
                 b.optional(Builder::userinfo, self.encoded_userinfo().as_deref())
+                    // NOTE :: must use regname here because we can't encode the transport into an
+                    // ip host
                     .host(Host::RegName(&reg_name))
                     .optional(Builder::port, self.hints.get("port").map(String::as_str))
             })

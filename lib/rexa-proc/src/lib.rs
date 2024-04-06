@@ -7,7 +7,7 @@ use syn::{
     parse_macro_input, parse_quote, parse_quote_spanned,
     punctuated::Punctuated,
     spanned::Spanned,
-    Arm, Expr, ImplItemFn, ItemImpl, Path, Signature, Stmt, Token, Type,
+    Arm, Attribute, Expr, ImplItemFn, ItemImpl, Path, Signature, Stmt, Token, Type,
 };
 
 // WARNING :: got way too "clever" with this one
@@ -313,7 +313,7 @@ pub fn impl_object(
     let metadata = parse_macro_input!(attr_input as Metadata);
     let Metadata {
         rexa,
-        syrup: _,
+        syrup,
         futures,
         tracing,
         object_t,
@@ -358,11 +358,13 @@ pub fn impl_object(
     };
 
     let get_id: Vec<Stmt> = parse_quote! {
-        let __id = match args.pop() {
+        let mut args = ::std::collections::VecDeque::from(args);
+        let __id = match args.pop_front() {
             Some(#item_t::Symbol(__id)) => __id,
             Some(__item) => return Err(#error_t::unexpected("Symbol", 0, __item)),
             None => return Err(#error_t::missing(0, "Symbol"))
         };
+        let mut args_pos = 1;
     };
 
     let deliver_only: ImplItemFn = if let Some(verbatim) = deliver_only_verbatim {
@@ -465,6 +467,8 @@ pub fn impl_object(
                 #exported
             }
         });
+
+    // let instrument_only: Option<Attribute> = tracing.as_ref().map(|tracing| parse_quote_spanned! {tracing.span()=> #[#tracing::instrument(fields(session = #rexa::hash(&session.remote_vkey()), args = %#syrup::ser::to_pretty(&args).unwrap()))]});
 
     quote_spanned! {span=>
         #base

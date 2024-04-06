@@ -32,7 +32,8 @@ impl IntoExport for Arc<dyn Object + Send + Sync + 'static> {
     }
 }
 
-pub(crate) trait CapTpDeliver {
+pub trait CapTpDeliver {
+    fn exports(&self) -> &ExportManager;
     fn deliver_only<'f>(
         &'f self,
         position: DescExport,
@@ -81,6 +82,10 @@ where
     Reader: Send + 'static,
     Writer: AsyncWrite + Send + Unpin + 'static,
 {
+    fn exports(&self) -> &ExportManager {
+        &self.exports
+    }
+
     fn deliver_only<'f>(
         &'f self,
         position: DescExport,
