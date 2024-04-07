@@ -5,12 +5,14 @@ members = ["lib/*"]
 authors = ["Ash Walker <ash@ashwalker.net>"]
 repository = "https://github.com/SignalWalker/rexa"
 license = "LGPL-3.0-or-later"
+publish = ["signal"]
 
 [package]
 name = "rexa"
 version = "0.1.0"
 edition = "2021"
 authors.workspace = true
+publish.workspace = true
 
 rust-version = "1.76" # TODO :: check whether rexa compiles with earlier versions of rust
 
@@ -35,7 +37,7 @@ futures = "^0.3"
 parking_lot = "^0.12"
 
 [dependencies]
-rexa-proc = { path = "./lib/rexa-proc" }
+rexa-proc = { path = "lib/rexa-proc", version = "^0.1", registry = "signal" }
 
 # meta
 thiserror.workspace = true
@@ -59,7 +61,7 @@ ed25519-dalek = { version = "^2", features = ["rand_core"] }
 fluent-uri = "^0.2.0-alpha.0"
 
 # syrup
-syrup = { path = "lib/syrup" }
+syrup = { path = "lib/syrup", version = "^0.1", registry = "signal" }
 
 # netlayers
 # netlayer-mock
