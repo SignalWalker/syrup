@@ -2,102 +2,54 @@
 members = ["lib/*"]
 
 [workspace.package]
+edition = "2021"
 authors = ["Ash Walker <ash@ashwalker.net>"]
-repository = "https://github.com/SignalWalker/rexa"
+repository = "https://git.ashwalker.net/Ash/syrup"
 license = "LGPL-3.0-or-later"
 publish = ["signal"]
 
 [package]
-name = "rexa"
+name = "syrup"
 version = "0.1.0"
-edition = "2021"
-authors.workspace = true
+edition.workspace = true
 publish.workspace = true
+authors.workspace = true
 
-rust-version = "1.76" # TODO :: check whether rexa compiles with earlier versions of rust
+rust-version = "1.76" # TODO :: check whether syrup compiles with earlier versions of rust
 
-description = "An implementation of OCapN, a protocol for secure peer-to-peer networking."
+description = "A library for serializing/deserializing syrup data."
 readme = true
 repository.workspace = true
 license.workspace = true
 
-categories = [
-  "asynchronous",
-  "authentication",
-  "concurrency",
-  "cryptography",
-  "network-programming",
-]
-keywords = ["ocap", "ocapn", "object-capabilities"]
-
 [workspace.dependencies]
 thiserror = "^1.0"
-tracing = "^0.1"
-futures = "^0.3"
-parking_lot = "^0.12"
 
 [dependencies]
-rexa-proc = { path = "lib/rexa-proc", version = "^0.1", registry = "signal" }
-
 # meta
 thiserror.workspace = true
-tracing.workspace = true
+tracing = "^0.1"
 
-futures.workspace = true
-tokio = { version = "^1.36", optional = true, default-features = false, features = [
-  "io-util",
-  "sync",
-  "parking_lot",
+syrup-proc = { path = "./lib/syrup-proc", version = "^0.1", registry = "signal" }
+syrup-derive = { path = "./lib/syrup-derive", version = "^0.1", registry = "signal" }
+
+nom = { version = "^7.1" }
+ibig = { version = "^0.3", default-features = false, features = [
+  "std",
+  "num-traits",
 ] }
-parking_lot.workspace = true
 
-# captp
-dashmap = { version = "^5" }
-## crypto
-rand = { version = "^0.8", features = [] }
-ed25519-dalek = { version = "^2", features = ["rand_core"] }
-
-# locators
-fluent-uri = "^0.2.0-alpha.0"
-
-# syrup
-syrup = { path = "lib/syrup", version = "^0.1", registry = "signal" }
-
-# netlayers
-# netlayer-mock
+# extra
+ed25519-dalek = { version = "^2", optional = true }
 
 [dev-dependencies]
-lazy_static = { version = "^1.4" }
-
-tracing-subscriber = { version = "^0.3", features = [
-  "time",
-  "env-filter",
-  "parking_lot",
-  "local-time",
-  "json",
-] }
-time = { version = "^0.3", features = ["formatting", "local-offset", "macros"] }
+proptest = { version = "^1.4" }
 
 [build-dependencies]
 
 [features]
-default = ["extra-diagnostics"]
-extra-diagnostics = []
-tokio = ["dep:tokio"]
-test-deps = ["tokio", "tokio/rt-multi-thread", "tokio/process", "tokio/macros"]
-
-
-[[test]]
-name = "ocapn_test_suite"
-required-features = ["netlayer-onion", "test-deps"]
-
-[[test]]
-name = "session"
-required-features = ["netlayer-mock", "test-deps"]
-
-[[test]]
-name = "deliver"
-required-features = ["netlayer-mock", "test-deps"]
+default = []
+extra-ed25519 = ["dep:ed25519-dalek"]
 
 [lints]
 workspace = true
