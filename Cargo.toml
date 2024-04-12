@@ -28,7 +28,6 @@ thiserror = "^1.0"
 [dependencies]
 # meta
 thiserror.workspace = true
-tracing = "^0.1"
 
 syrup-proc = { path = "./lib/syrup-proc", version = "^0.1", registry = "signal" }
 syrup-derive = { path = "./lib/syrup-derive", version = "^0.1", registry = "signal" }
