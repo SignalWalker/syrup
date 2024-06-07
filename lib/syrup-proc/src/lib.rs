@@ -1,7 +1,8 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{
-    parse_macro_input, parse_quote, GenericParam, Ident, LitInt, Type, TypeParam, TypeParamBound,
+    parse_macro_input, parse_quote, GenericParam, Ident, Lifetime, LifetimeParam, LitInt, Type,
+    TypeParam, TypeParamBound,
 };
 
 fn gen_tuple_idents(max_arity: usize) -> Vec<Ident> {
@@ -28,35 +29,47 @@ fn gen_tuple_params(
 }
 
 #[proc_macro]
-pub fn impl_deserialize_for_tuple(max_arity: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn impl_decode_for_tuple(max_arity: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let max_arity: usize = parse_macro_input!(max_arity as LitInt)
         .base10_parse()
         .unwrap();
+
+    let lifetime: Lifetime = Lifetime::new("'input", Span::call_site());
+    let lifetime_param: LifetimeParam = LifetimeParam::new(lifetime.clone());
+
     let idents = gen_tuple_idents(max_arity);
-    let param_bound: TypeParamBound = parse_quote!(Deserialize<'input>);
+    let param_bound: TypeParamBound = parse_quote!(syrup::Decode<#lifetime>);
     let mut res = TokenStream::new();
-    for idents in (1..=max_arity).map(|arity| &idents[0..arity]) {
+
+    let decodes = idents
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let require = format!("{i}th tuple element");
+            quote! {
+                stream.require(::std::borrow::Cow::Borrowed(#require))?.decode()?
+            }
+        })
+        .collect::<Vec<_>>();
+
+    for (idents, decodes) in (1..=max_arity).map(|arity| (&idents[..arity], &decodes[..arity])) {
         let (impl_generics, ty_generics) = gen_tuple_params(&param_bound, idents);
-        let arity_str = idents.len().to_string();
+
+        let expected = format!("Sequence with {} elements", idents.len());
+
         quote! {
             #[automatically_derived]
-            impl <'input, #(#impl_generics),* > Deserialize<'input> for ( #(#ty_generics,)* ) {
-                fn deserialize<Des: Deserializer<'input>>(de: Des) -> Result<Self, Des::Error> {
-                    struct __Visitor<#(#ty_generics),*> {
-                        _p: PhantomData<(#(#ty_generics,)*)>
+            impl <#lifetime_param, #(#impl_generics),*> syrup::Decode<#lifetime> for ( #(#ty_generics,)* ) {
+                fn decode(input: syrup::de::TokenTree<#lifetime>) -> ::std::result::Result<Self, syrup::de::DecodeError<#lifetime>> {
+                    match input {
+                        syrup::de::TokenTree::Sequence(syrup::de::Sequence {
+                            mut stream,
+                            ..
+                        }) => {
+                            Ok(( #(#decodes,)* ))
+                        },
+                        tree => Err(tree.to_unexpected(::std::borrow::Cow::Borrowed(#expected)))
                     }
-                    impl<'input, #(#impl_generics),*> Visitor<'input> for __Visitor<#(#ty_generics),*> {
-                        type Value = ( #(#ty_generics,)* );
-
-                        fn expecting(&self, f: &mut ::std::fmt::Formatter<'_>) -> std::fmt::Result {
-                            f.write_str(::std::concat!(#arity_str, "-tuple"))
-                        }
-
-                        fn visit_sequence<Seq: SeqAccess<'input>>(self, mut seq: Seq) -> Result<Self::Value, Seq::Error> {
-                            Ok(( #(seq.next_value::<#ty_generics>()?.ok_or_else(|| todo!())?,)* ))
-                        }
-                    }
-                    de.deserialize_sequence(__Visitor { _p: PhantomData })
                 }
             }
         }
@@ -66,28 +79,34 @@ pub fn impl_deserialize_for_tuple(max_arity: proc_macro::TokenStream) -> proc_ma
 }
 
 #[proc_macro]
-pub fn impl_serialize_for_tuple(max_arity: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn impl_encode_for_tuple(max_arity: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let max_arity: usize = parse_macro_input!(max_arity as LitInt)
         .base10_parse()
         .unwrap();
     let idents = gen_tuple_idents(max_arity);
-    let param_bound: TypeParamBound = parse_quote!(Serialize);
+    let lifetime: Lifetime = Lifetime::new("'output", Span::call_site());
+    let lifetime_param: LifetimeParam = LifetimeParam::new(lifetime.clone());
+    let param_bound: TypeParamBound = parse_quote!(syrup::Encode<#lifetime>);
     let mut res = TokenStream::new();
-    for (arity, idents) in (1..=max_arity).map(|arity| (arity, &idents[0..arity])) {
+    let encodes = idents
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let index = syn::Index::from(i);
+            quote! { self.#index.to_tokens() }
+        })
+        .collect::<Vec<_>>();
+    for (idents, encodes) in (1..=max_arity).map(|arity| (&idents[0..arity], &encodes[0..arity])) {
         let (impl_generics, ty_generics) = gen_tuple_params(&param_bound, idents);
-        let serializes = (0..arity)
-            .map(|index| {
-                let index = syn::Index::from(index);
-                quote! { &self.#index }
-            })
-            .collect::<Vec<_>>();
         quote! {
             #[automatically_derived]
-            impl<#(#impl_generics),*> Serialize for ( #(#ty_generics,)* ) {
-                fn serialize<Ser: Serializer>(&self, s: Ser) -> Result<Ser::Ok, Ser::Error> {
-                    let mut seq = s.serialize_sequence(Some(#arity))?;
-                    #( seq.serialize_element(#serializes)?; )*
-                    seq.end()
+            impl<#lifetime_param, #(#impl_generics),*> syrup::Encode<#lifetime> for ( #(#ty_generics,)* ) {
+                fn to_tokens_spanned(self, span: syrup::de::Span) -> syrup::de::TokenTree<#lifetime> {
+                    use syrup::Encode;
+                    syrup::de::Sequence {
+                        stream: syrup::de::TokenStream::new(vec![#(#encodes),*]),
+                        span
+                    }.into()
                 }
             }
         }
