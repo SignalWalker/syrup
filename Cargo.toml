@@ -15,7 +15,7 @@ edition.workspace = true
 publish.workspace = true
 authors.workspace = true
 
-rust-version = "1.76" # TODO :: check whether syrup compiles with earlier versions of rust
+rust-version = "1.77"
 
 description = "A library for serializing/deserializing syrup data."
 readme = true
@@ -23,7 +23,7 @@ repository.workspace = true
 license.workspace = true
 
 [workspace.dependencies]
-thiserror = "^1.0"
+thiserror = "^2"
 
 [dependencies]
 # meta
@@ -32,23 +32,17 @@ thiserror.workspace = true
 syrup-proc = { path = "./lib/syrup-proc", version = "^0.1", registry = "signal" }
 syrup-derive = { path = "./lib/syrup-derive", version = "^0.1", registry = "signal" }
 
-nom = { version = "^7.1" }
-ibig = { version = "^0.3", default-features = false, features = [
-  "std",
-  "num-traits",
-] }
-
-# extra
-ed25519-dalek = { version = "^2", optional = true }
+nom = { version = "^8" }
 
 [dev-dependencies]
-proptest = { version = "^1.4" }
+proptest = { version = "^1" }
+proptest-derive = "^0.5"
 
 [build-dependencies]
 
 [features]
 default = []
-extra-ed25519 = ["dep:ed25519-dalek"]
+decode-array = []
 
 [lints]
 workspace = true
@@ -70,9 +64,10 @@ unused_crate_dependencies = "warn"
 unused_macro_rules = "warn"
 variant_size_differences = "warn"
 # embark studios standard (https://github.com/EmbarkStudios/rust-ecosystem/blob/main/lints.toml)
-future_incompatible = "deny"
+future_incompatible = { level = "deny", priority = -1 }
 nonstandard_style = "warn"
 rust_2018_idioms = "warn"
+unexpected_cfgs = "warn"
 # end embark studios lints
 
 [workspace.lints.clippy]
@@ -119,7 +114,6 @@ match_same_arms = "warn"
 match_wild_err_arm = "warn"
 match_wildcard_for_single_variants = "warn"
 mem_forget = "warn"
-mismatched_target_os = "warn"
 missing_enforced_import_renames = "warn"
 mut_mut = "warn"
 mutex_integer = "warn"
@@ -134,7 +128,7 @@ ref_option_ref = "warn"
 rest_pat_in_fully_bound_structs = "warn"
 same_functions_in_if_condition = "warn"
 semicolon_if_nothing_returned = "warn"
-single_match_else = "warn"
+# single_match_else = "warn"
 string_add_assign = "warn"
 string_add = "warn"
 string_lit_as_bytes = "warn"

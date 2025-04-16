@@ -1,0 +1,19 @@
+[package]
+name = "syrup-ed25519"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+syrup = { path = "../..", version = "^0.1", registry = "signal" }
+ed25519-dalek = { version = "^2", default-features = false }
+
+[dev-dependencies]
+proptest = { version = "^1" }
+proptest-derive = "^0.5"
+
+[lints]
+workspace = true
