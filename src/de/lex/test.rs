@@ -1,3 +1,4 @@
+use borrow_or_share::Bos;
 use proptest::prelude::*;
 use proptest::{
     prelude::{BoxedStrategy, Strategy},
@@ -24,7 +25,7 @@ impl Default for MaxDepth {
     }
 }
 
-impl proptest::prelude::Arbitrary for TokenTree {
+impl proptest::prelude::Arbitrary for TokenTree<Vec<u8>> {
     type Parameters = MaxDepth;
 
     type Strategy = BoxedStrategy<Self>;
@@ -50,20 +51,20 @@ proptest! {
     #[test]
     fn parses_token_tree(tree in TokenTree::arbitrary_with(MaxDepth(2))) {
         let bytes = tree.to_bytes();
-        let res = TokenTree::parse::<E<'_>>(&bytes);
+        let res = TokenTree::<&[u8]>::parse::<E<'_>>(&bytes);
         prop_assert!(res.is_ok(), "encoded input: `{}`, error: {}", String::from_utf8_lossy(&bytes), res.unwrap_err());
         let (rem, res) = res.unwrap();
         prop_assert_eq!(rem, [].as_slice());
-        prop_assert_eq!(res, tree);
+        prop_assert_eq!(&res, &tree);
     }
 
     // TODO :: make this run faster
     #[test]
     fn parses_incomplete(tokens in proptest::collection::vec(TokenTree::arbitrary(), 1..=3)) {
-        fn encode_tokens(tokens: &[TokenTree]) -> Vec<u8> {
+        fn encode_tokens<Data>(tokens: &[TokenTree<Data>]) -> Vec<u8> where Data: Bos<[u8]> {
             let mut bytes = Vec::new();
             for token in tokens {
-                bytes.extend(token.to_bytes());
+                bytes.extend_from_slice(&token.to_bytes());
             }
             bytes
         }
@@ -74,7 +75,7 @@ proptest! {
         let mut start = 0;
         let mut window = bytes.get(start..1).expect("encoded tokens should be longer than 1 byte");
         loop {
-            match TokenTree::parse::<E<'_>>(window) {
+            match TokenTree::<&[u8]>::parse::<E<'_>>(window) {
                 Ok((rem, token)) => {
                     start = start + window.len() - rem.len();
                     window = rem;

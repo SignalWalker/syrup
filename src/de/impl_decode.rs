@@ -3,14 +3,18 @@ use std::{
     cell::{Cell, RefCell},
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     num::{
-        NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize, NonZeroU128,
-        NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize, Saturating, Wrapping,
+        NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize, NonZeroU8,
+        NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize, Saturating, Wrapping,
     },
     rc::Rc,
     sync::{Arc, Mutex},
 };
 
-use crate::de::{Decode, DecodeError, Dictionary, List, Literal, Record, Set, TokenTree};
+use borrow_or_share::{BorrowOrShare, Bos};
+
+use crate::de::{
+    Decode, DecodeError, Dictionary, List, Literal, Record, Set, SyrupKind, TokenTree,
+};
 
 #[cfg(test)]
 mod test;
@@ -21,19 +25,25 @@ mod _impl_tuple {
     syrup_proc::impl_decode_for_tuple!(32);
 }
 
-impl<'i> Decode<'i> for () {
-    fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+impl<'i, IData> Decode<'i, IData> for ()
+where
+    IData: Bos<[u8]>,
+{
+    fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
         match input {
             TokenTree::List(List { elements }) if elements.is_empty() => Ok(()),
-            _ => Err(DecodeError::unexpected("empty list".into(), input.clone())),
+            _ => Err(DecodeError::unexpected(
+                SyrupKind::List { length: Some(0) },
+                input,
+            )),
         }
     }
 }
 
 // TODO :: this seems to be convention, but maybe it should be a separate function instead of the
 // canonical impl for Option
-impl<'i, T: Decode<'i>> Decode<'i> for Option<T> {
-    fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+impl<'i, IData, T: Decode<'i, IData>> Decode<'i, IData> for Option<T> {
+    fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
         match input {
             TokenTree::Literal(Literal::Bool(false)) => Ok(None),
             val => val.decode().map(Self::Some),
@@ -44,8 +54,8 @@ impl<'i, T: Decode<'i>> Decode<'i> for Option<T> {
 macro_rules! impl_decode_for_wrapper {
     ($($Wrapper:ident),+) => {
         $(
-        impl<'i, T: Decode<'i>> Decode<'i> for $Wrapper<T> {
-            fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+        impl<'i, IData, T: Decode<'i, IData>> Decode<'i, IData> for $Wrapper<T> {
+            fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
                 T::decode(input).map($Wrapper::new)
             }
         }
@@ -55,125 +65,124 @@ macro_rules! impl_decode_for_wrapper {
 
 impl_decode_for_wrapper!(Box, Rc, Arc, Cell, RefCell, Mutex);
 
-impl<'i, T> Decode<'i> for Box<[T]>
+impl<'i, IData, T> Decode<'i, IData> for Box<[T]>
 where
-    Vec<T>: Decode<'i>,
+    Vec<T>: Decode<'i, IData>,
 {
-    fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+    fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
         Vec::<T>::decode(input).map(From::from)
     }
 }
 
 macro_rules! impl_decode_to_tokens {
-    ($Id:ident, $expected:literal => $Ty:ty) => {
-        impl<'i> Decode<'i> for $Ty {
-            fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+    ($Id:ident, $expected:expr => $OData:ident, $Ty:ty, $val:ident => $into:expr) => {
+        impl<'i, 'o, IData, $OData> Decode<'i, IData> for $Ty
+        where
+            IData: BorrowOrShare<'i, 'o, [u8]>,
+            &'o [u8]: Into<$OData>,
+        {
+            fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
                 match input {
-                    TokenTree::$Id(val) => Ok(<$Ty>::clone(val)),
-                    _ => Err(DecodeError::unexpected(
-                        Cow::Borrowed($expected),
-                        input.clone(),
-                    )),
+                    TokenTree::$Id($val) => Ok($into),
+                    _ => Err(DecodeError::unexpected($expected, input)),
                 }
             }
         }
 
-        impl<'i> Decode<'i> for &'i $Ty {
-            fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
-                match input {
-                    TokenTree::$Id(val) => Ok(val),
-                    _ => Err(DecodeError::unexpected(
-                        Cow::Borrowed($expected),
-                        input.clone(),
-                    )),
-                }
-            }
-        }
+        // impl<'i> Decode<'i> for &'i $Ty {
+        //     fn decode(input: &'i TokenTree) -> Result<Self, DecodeError> {
+        //         match input {
+        //             TokenTree::$Id(val) => Ok(val),
+        //             _ => Err(DecodeError::unexpected(
+        //                 Cow::Borrowed($expected),
+        //                 input.clone(),
+        //             )),
+        //         }
+        //     }
+        // }
     };
 }
-impl_decode_to_tokens! {List, "List" => List}
-impl_decode_to_tokens! {Dictionary, "Dictionary" => Dictionary}
-impl_decode_to_tokens! {Set, "Set" => Set}
-impl_decode_to_tokens! {Record, "Record" => Record}
-impl_decode_to_tokens! {Literal, "Literal" => Literal}
 
-#[allow(edition_2024_expr_fragment_specifier)]
+impl_decode_to_tokens! {List, SyrupKind::List { length: None } => OData, List<OData>, val => val.into()}
+impl_decode_to_tokens! {Dictionary, SyrupKind::Dictionary => OData, Dictionary<OData>, val => val.into()}
+impl_decode_to_tokens! {Set, SyrupKind::Set => OData, Set<OData>, val => val.into()}
+impl_decode_to_tokens! {Record, SyrupKind::Record { label: None } => OData, Record<OData>, val => (&**val).into()}
+impl_decode_to_tokens! {Literal, SyrupKind::Unknown("Literal") => OData, Literal<OData>, val => val.into()}
+
 macro_rules! impl_parse_simple {
-    ($Ty:ty, $expected:expr, $Lit:ident) => {
-        impl<'i> Decode<'i> for $Ty {
-            fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+    ($Ty:ty, $Lit:ident) => {
+        impl<'i, IData> Decode<'i, IData> for $Ty
+        where
+            IData: Bos<[u8]>,
+        {
+            fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
                 match input {
                     TokenTree::Literal(Literal::$Lit(val)) => Ok(*val),
-                    _ => Err(DecodeError::unexpected(
-                        Cow::Borrowed($expected),
-                        input.clone(),
-                    )),
+                    _ => Err(DecodeError::unexpected(SyrupKind::$Lit, input)),
                 }
             }
         }
     };
 }
+impl_parse_simple! {bool, Bool}
+impl_parse_simple! {f32, F32}
+impl_parse_simple! {f64, F64}
 
-impl_parse_simple! {bool, "bool", Bool}
-impl_parse_simple! {f32, "f32", F32}
-impl_parse_simple! {f64, "f64", F64}
-
-#[allow(edition_2024_expr_fragment_specifier)]
 macro_rules! impl_parse_stringlike {
-    ($String:ty, $expected:expr, $Lit:ident) => {
-        impl<'i> Decode<'i> for $String {
-            fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+    ($i_lt:lifetime, $o_lt:lifetime, $String:ty, $Lit:ident) => {
+        impl<$i_lt, $o_lt, IData> Decode<$i_lt, IData> for $String
+        where
+            IData: BorrowOrShare<$i_lt, $o_lt, [u8]>,
+            &'o str: Into<$String>,
+        {
+            fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
                 match input {
-                    TokenTree::Literal(Literal::$Lit(val)) => match std::str::from_utf8(val) {
-                        Ok(res) => Ok(res.into()),
-                        Err(e) => Err(DecodeError::utf8(Cow::Owned(val.clone()), e)),
-                    },
-                    _ => Err(DecodeError::unexpected(
-                        Cow::Borrowed($expected),
-                        input.clone(),
-                    )),
+                    TokenTree::Literal(Literal::$Lit(val)) => {
+                        Ok(std::str::from_utf8(val.borrow_or_share())?.into())
+                    }
+                    _ => Err(DecodeError::unexpected(SyrupKind::String, input)),
                 }
             }
         }
     };
+    ($String:ty, $Lit:ident) => {
+        impl_parse_stringlike! {'i, 'o, $String, $Lit}
+    };
 }
-impl_parse_stringlike! {String, "String", String}
-// impl_parse_stringlike! {Symbol<'i>, "Symbol", Symbol}
+impl_parse_stringlike! {String, String}
+impl_parse_stringlike! {Box<str>, String}
+impl_parse_stringlike! {Rc<str>, String}
+impl_parse_stringlike! {Arc<str>, String}
+impl_parse_stringlike! {'i, 'o, Cow<'o, str>, String}
+// impl_parse_stringlike! {'i, 'o, &'o str, String}
 
-// impl<'i, const LEN: usize> Decode<'i> for ByteArray<'i, LEN> {
-//     fn decode(input: TokenTree<'i>) -> Result<Self, DecodeError<'i>> {
-//         // TODO :: surely there's a way to make the expected str const
-//         match input {
-//             TokenTree::Literal(Literal {
-//                 repr: LiteralValue::Bytes(ref bytes),
-//                 ..
-//             }) => match bytes {
-//                 Cow::Borrowed(b) => ByteArray::try_from(*b),
-//                 // TODO :: avoid `b.clone()` here
-//                 Cow::Owned(b) => ByteArray::try_from(b.clone()),
-//             }
-//             .map_err(|_error| input.to_unexpected(format!("{LEN} Bytes").into())),
-//             tree => Err(tree.to_unexpected(format!("{LEN} Bytes").into())),
-//         }
-//     }
-// }
-//
-// impl<'i> Decode<'i> for String {
-//     fn decode(input: TokenTree<'i>) -> Result<Self, DecodeError<'i>> {
-//         Cow::<'i, str>::decode(input).map(Cow::into_owned)
-//     }
-// }
-//
+impl<'i, 'o, IData> Decode<'i, IData> for &'o str
+where
+    IData: BorrowOrShare<'i, 'o, [u8]>,
+{
+    fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
+        match input {
+            TokenTree::Literal(Literal::String(val)) => {
+                Ok(std::str::from_utf8(val.borrow_or_share())?)
+            }
+            _ => Err(DecodeError::unexpected(SyrupKind::String, input)),
+        }
+    }
+}
+
 macro_rules! impl_decode_for_int {
     ($($Int:ty),+$(,)?) => {
         $(
-        impl<'i> Decode<'i> for $Int {
-            fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+        impl<'i, IData> Decode<'i, IData> for $Int
+        where
+            IData: Bos<[u8]>
+        {
+            fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
                 match input {
-                    TokenTree::Literal(Literal::Int(int)) => int.try_into().map_err(|source| DecodeError::int(int.clone().into_static(), source)),
+                    TokenTree::Literal(Literal::Int(int)) => <&'i $crate::de::Int<IData> as TryInto<$Int>>::try_into(int).map_err(|source| DecodeError::int::<$Int>(source.kind)),
                     _ => Err(DecodeError::unexpected(
-                        Cow::Borrowed(::std::stringify!($Int)),
-                        input.clone()
+                        SyrupKind::int::<$Int>(),
+                        input
                     )),
                 }
             }
@@ -209,69 +218,72 @@ impl_decode_for_int!(
     NonZeroI128
 );
 
-impl<'i, T: Decode<'i> + Into<Wrapping<T>>> Decode<'i> for Wrapping<T> {
-    fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+impl<'i, IData, T: Decode<'i, IData> + Into<Wrapping<T>>> Decode<'i, IData> for Wrapping<T> {
+    fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
         T::decode(input).map(T::into)
     }
 }
 
-impl<'i, T: Decode<'i> + Into<Saturating<T>>> Decode<'i> for Saturating<T> {
-    fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+impl<'i, IData, T: Decode<'i, IData> + Into<Saturating<T>>> Decode<'i, IData> for Saturating<T> {
+    fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
         T::decode(input).map(T::into)
     }
 }
 
-#[cfg(feature = "decode-array")]
-impl<'i, T: Decode<'i>, const LEN: usize> Decode<'i> for [T; LEN] {
-    fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
-        use std::mem::MaybeUninit;
-        fn initialize_array<'i, 'e, T: Decode<'i>, const LEN: usize>(
-            init_amt: &mut usize,
-            array: &mut [MaybeUninit<T>; LEN],
-            tokens: &'i [TokenTree],
-        ) -> Result<(), DecodeError<'e>> {
-            for (i, slot) in array.iter_mut().enumerate() {
-                let element = match tokens.get(i) {
-                    Some(el) => T::decode(el)?,
-                    None => {
-                        return Err(DecodeError::missing(Cow::Owned(format!(
-                            "{i}th array element"
-                        ))))
-                    }
-                };
-                slot.write(element);
-                *init_amt += 1;
-            }
-            Ok(())
-        }
-        match input {
-            TokenTree::List(List { elements }) => {
-                #[allow(unsafe_code)]
-                unsafe {
-                    let mut init_amt = 0;
-                    let mut res = [const { MaybeUninit::<T>::uninit() }; LEN];
-                    if let Err(error) =
-                        initialize_array::<T, LEN>(&mut init_amt, &mut res, elements)
-                    {
-                        for val in &mut res[..init_amt] {
-                            val.assume_init_drop();
-                        }
-                        return Err(error);
-                    }
-                    #[allow(unsafe_code)]
-                    Ok(MaybeUninit::array_assume_init(res))
-                }
-            }
-            _ => Err(DecodeError::unexpected(
-                Cow::Owned(format!("list with {LEN} elements")),
-                input.clone(),
-            )),
-        }
-    }
-}
+// #[cfg(feature = "decode-array")]
+// impl<'i, T: Decode<'i>, const LEN: usize> Decode<'i> for [T; LEN] {
+//     fn decode(input: &'i TokenTree) -> Result<Self, DecodeError> {
+//         use std::mem::MaybeUninit;
+//         fn initialize_array<'i, 'e, T: Decode<'i>, const LEN: usize>(
+//             init_amt: &mut usize,
+//             array: &mut [MaybeUninit<T>; LEN],
+//             tokens: &'i [TokenTree],
+//         ) -> Result<(), DecodeError> {
+//             for (i, slot) in array.iter_mut().enumerate() {
+//                 let element = match tokens.get(i) {
+//                     Some(el) => T::decode(el)?,
+//                     None => {
+//                         return Err(DecodeError::missing(Cow::Owned(format!(
+//                             "{i}th array element"
+//                         ))));
+//                     }
+//                 };
+//                 slot.write(element);
+//                 *init_amt += 1;
+//             }
+//             Ok(())
+//         }
+//         match input {
+//             TokenTree::List(List { elements }) => {
+//                 #[expect(unsafe_code)]
+//                 unsafe {
+//                     let mut init_amt = 0;
+//                     let mut res = [const { MaybeUninit::<T>::uninit() }; LEN];
+//                     if let Err(error) =
+//                         initialize_array::<T, LEN>(&mut init_amt, &mut res, elements)
+//                     {
+//                         for val in &mut res[..init_amt] {
+//                             val.assume_init_drop();
+//                         }
+//                         return Err(error);
+//                     }
+//                     #[expect(unsafe_code)]
+//                     Ok(MaybeUninit::array_assume_init(res))
+//                 }
+//             }
+//             _ => Err(DecodeError::unexpected(
+//                 Cow::Owned(format!("list with {LEN} elements")),
+//                 input.clone(),
+//             )),
+//         }
+//     }
+// }
 
-impl<'i, T: Decode<'i>> Decode<'i> for Vec<T> {
-    fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+impl<'i, IData, T: Decode<'i, IData>> Decode<'i, IData> for Vec<T>
+where
+    IData: Bos<[u8]>,
+{
+    fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
         match input {
             TokenTree::List(List { elements }) => {
                 let mut res = Vec::with_capacity(elements.len());
@@ -281,19 +293,20 @@ impl<'i, T: Decode<'i>> Decode<'i> for Vec<T> {
                 Ok(res)
             }
             _ => Err(DecodeError::unexpected(
-                Cow::Borrowed("list"),
-                input.clone(),
+                SyrupKind::List { length: None },
+                input,
             )),
         }
     }
 }
 
-impl<'i, T, S> Decode<'i> for HashSet<T, S>
+impl<'i, IData, T, S> Decode<'i, IData> for HashSet<T, S>
 where
-    T: Decode<'i> + std::hash::Hash + Eq,
+    T: Decode<'i, IData> + std::hash::Hash + Eq,
     S: Default + std::hash::BuildHasher,
+    IData: Bos<[u8]>,
 {
-    fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+    fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
         match input {
             TokenTree::Set(set) => {
                 let mut res = HashSet::<T, S>::default();
@@ -302,16 +315,17 @@ where
                 }
                 Ok(res)
             }
-            _ => Err(DecodeError::unexpected(Cow::Borrowed("set"), input.clone())),
+            _ => Err(DecodeError::unexpected(SyrupKind::Set, input)),
         }
     }
 }
 
-impl<'i, T> Decode<'i> for BTreeSet<T>
+impl<'i, IData, T> Decode<'i, IData> for BTreeSet<T>
 where
-    T: Decode<'i> + std::cmp::Ord,
+    T: Decode<'i, IData> + std::cmp::Ord,
+    IData: Bos<[u8]>,
 {
-    fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+    fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
         match input {
             TokenTree::Set(set) => {
                 let mut res = Self::default();
@@ -320,18 +334,19 @@ where
                 }
                 Ok(res)
             }
-            _ => Err(DecodeError::unexpected(Cow::Borrowed("set"), input.clone())),
+            _ => Err(DecodeError::unexpected(SyrupKind::Set, input)),
         }
     }
 }
 
-impl<'i, K, V, S> Decode<'i> for HashMap<K, V, S>
+impl<'i, IData, K, V, S> Decode<'i, IData> for HashMap<K, V, S>
 where
-    K: Decode<'i> + std::hash::Hash + Eq,
-    V: Decode<'i>,
+    K: Decode<'i, IData> + std::hash::Hash + Eq,
+    V: Decode<'i, IData>,
     S: Default + std::hash::BuildHasher,
+    IData: Bos<[u8]>,
 {
-    fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+    fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
         match input {
             TokenTree::Dictionary(dict) => {
                 let mut res = Self::default();
@@ -340,20 +355,18 @@ where
                 }
                 Ok(res)
             }
-            _ => Err(DecodeError::unexpected(
-                Cow::Borrowed("dictionary"),
-                input.clone(),
-            )),
+            _ => Err(DecodeError::unexpected(SyrupKind::Dictionary, input)),
         }
     }
 }
 
-impl<'i, K, V> Decode<'i> for BTreeMap<K, V>
+impl<'i, IData, K, V> Decode<'i, IData> for BTreeMap<K, V>
 where
-    K: Decode<'i> + std::cmp::Ord,
-    V: Decode<'i>,
+    K: Decode<'i, IData> + std::cmp::Ord,
+    V: Decode<'i, IData>,
+    IData: Bos<[u8]>,
 {
-    fn decode<'e>(input: &'i TokenTree) -> Result<Self, DecodeError<'e>> {
+    fn decode(input: &'i TokenTree<IData>) -> Result<Self, DecodeError> {
         match input {
             TokenTree::Dictionary(dict) => {
                 let mut res = Self::default();
@@ -362,10 +375,7 @@ where
                 }
                 Ok(res)
             }
-            _ => Err(DecodeError::unexpected(
-                Cow::Borrowed("dictionary"),
-                input.clone(),
-            )),
+            _ => Err(DecodeError::unexpected(SyrupKind::Dictionary, input)),
         }
     }
 }

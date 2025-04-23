@@ -1,22 +1,37 @@
 use std::{
     borrow::Cow,
-    fmt::Write,
+    io::Write,
     num::{
-        IntErrorKind, NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize,
-        NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize, ParseIntError,
+        IntErrorKind, NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize,
+        NonZeroU8, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize, ParseIntError,
     },
 };
 
+use borrow_or_share::{BorrowOrShare, Bos};
+
 /// An integer literal.
-#[derive(Clone, PartialEq, Eq)]
-pub struct Int<'input> {
+#[derive(Clone, Copy, Hash)]
+pub struct Int<Digits> {
     pub positive: bool,
     /// SAFETY: must only contain ASCII digit characters 0-9
-    digits: Cow<'input, [u8]>,
+    digits: Digits,
 }
 
-impl<'i> std::fmt::Debug for Int<'i> {
+impl<LDigits, RDigits> PartialEq<Int<RDigits>> for Int<LDigits>
+where
+    LDigits: PartialEq<RDigits>,
+{
+    fn eq(&self, other: &Int<RDigits>) -> bool {
+        self.positive == other.positive && self.digits.eq(&other.digits)
+    }
+}
+
+impl<Digits> std::fmt::Debug for Int<Digits>
+where
+    Digits: Bos<[u8]>,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::fmt::Write;
         if !self.positive {
             f.write_char('-')?;
         }
@@ -24,47 +39,74 @@ impl<'i> std::fmt::Debug for Int<'i> {
     }
 }
 
-impl<'i> Int<'i> {
-    pub fn encode(&self) -> Vec<u8> {
-        let mut res = Vec::with_capacity(self.digits.len() + 1);
-        res.extend(&*self.digits);
+impl<Digits> Int<Digits> {
+    pub fn encode<'i, 'o>(&'i self) -> Cow<'o, [u8]>
+    where
+        Digits: BorrowOrShare<'i, 'o, [u8]>,
+    {
+        let digits = self.digits.borrow_or_share();
+        let mut res = Vec::with_capacity(digits.len() + 1);
+        res.extend_from_slice(digits);
         res.push(if self.positive { b'+' } else { b'-' });
-        res
+        Cow::Owned(res)
+    }
+
+    pub fn encode_into(&self, w: &mut impl Write) -> std::io::Result<usize>
+    where
+        Digits: Bos<[u8]>,
+    {
+        let digits = self.digits.borrow_or_share();
+        w.write_all(digits)?;
+        w.write_all(if self.positive { b"+" } else { b"-" })?;
+        Ok(digits.len() + 1)
     }
 
     /// # Safety
     ///
     /// `digits` must only contain ASCII decimal digits
-    #[allow(unsafe_code)]
-    pub const unsafe fn new(positive: bool, digits: Cow<'i, [u8]>) -> Self {
+    #[expect(unsafe_code)]
+    pub const unsafe fn new(positive: bool, digits: Digits) -> Self {
         Self { positive, digits }
     }
 
     #[inline]
-    pub fn digits(&self) -> &str {
-        #[allow(unsafe_code)]
+    pub fn digits<'i, 'o>(&'i self) -> &'o str
+    where
+        Digits: BorrowOrShare<'i, 'o, [u8]>,
+    {
+        #[expect(unsafe_code)]
         unsafe {
-            std::str::from_utf8_unchecked(&self.digits)
+            std::str::from_utf8_unchecked(self.digits.borrow_or_share())
         }
     }
 
-    pub fn into_static(self) -> Int<'static> {
-        match self.digits {
-            Cow::Borrowed(d) => Int {
-                positive: self.positive,
-                digits: Cow::Owned(d.to_vec()),
-            },
-            Cow::Owned(d) => Int {
-                positive: self.positive,
-                digits: Cow::Owned(d),
-            },
+    pub fn digits_into<IDigits>(self) -> Int<IDigits>
+    where
+        Digits: Into<IDigits>,
+    {
+        Int {
+            positive: self.positive,
+            digits: self.digits.into(),
+        }
+    }
+}
+
+impl<'i, 'o, IDigits, ODigits> From<&'i Int<IDigits>> for Int<ODigits>
+where
+    IDigits: BorrowOrShare<'i, 'o, [u8]>,
+    &'o [u8]: Into<ODigits>,
+{
+    fn from(value: &'i Int<IDigits>) -> Self {
+        Self {
+            positive: value.positive,
+            digits: value.digits.borrow_or_share().into(),
         }
     }
 }
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub struct DecodeIntError {
-    kind: IntErrorKind,
+    pub kind: IntErrorKind,
 }
 
 impl std::fmt::Display for DecodeIntError {
@@ -84,9 +126,9 @@ impl From<ParseIntError> for DecodeIntError {
 macro_rules! impl_uint {
     ($($Int:ty),+) => {
         $(
-        impl<'i> TryFrom<&Int<'i>> for $Int {
+        impl<Digits> TryFrom<&Int<Digits>> for $Int where Digits: Bos<[u8]> {
             type Error = DecodeIntError;
-            fn try_from(int: &Int<'i>) -> Result<$Int, Self::Error> {
+            fn try_from(int: &Int<Digits>) -> Result<$Int, Self::Error> {
                 if !int.positive {
                     return Err(DecodeIntError { kind: IntErrorKind::NegOverflow });
                 }
@@ -94,10 +136,10 @@ macro_rules! impl_uint {
             }
         }
 
-        impl<'i> From<$Int> for Int<'i> {
+        impl From<$Int> for Int<Vec<u8>> {
             fn from(val: $Int) -> Self {
-                #[allow(unsafe_code)]
-                unsafe { Self::new(true, Cow::Owned(val.to_string().into_bytes())) }
+                #[expect(unsafe_code)]
+                unsafe { Self::new(true, val.to_string().into_bytes()) }
             }
         }
         )+
@@ -107,9 +149,9 @@ macro_rules! impl_uint {
 macro_rules! impl_int {
     ($($UInt:ty => $Int:ty),+) => {
         $(
-            impl<'i> TryFrom<&Int<'i>> for $Int {
+            impl<Digits> TryFrom<&Int<Digits>> for $Int where Digits: Bos<[u8]> {
                 type Error = DecodeIntError;
-                fn try_from(int: &Int<'i>) -> Result<$Int, Self::Error> {
+                fn try_from(int: &Int<Digits>) -> Result<$Int, Self::Error> {
                     const MAX_POSITIVE: $UInt = <$Int>::MAX.unsigned_abs();
                     const MAX_NEGATIVE: $UInt = <$Int>::MIN.unsigned_abs();
                     let val = int.digits().parse::<$UInt>()?;
@@ -128,10 +170,10 @@ macro_rules! impl_int {
                 }
             }
 
-            impl<'i> From<$Int> for Int<'i> {
+            impl From<$Int> for Int<Vec<u8>> {
                 fn from(val: $Int) -> Self {
-                    #[allow(unsafe_code)]
-                    unsafe { Self::new(val.is_positive(), Cow::Owned(val.unsigned_abs().to_string().into_bytes())) }
+                    #[expect(unsafe_code)]
+                    unsafe { Self::new(val.is_positive(), val.unsigned_abs().to_string().into_bytes()) }
                 }
             }
         )+

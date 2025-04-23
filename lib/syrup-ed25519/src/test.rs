@@ -1,7 +1,10 @@
-use ed25519_dalek::Signature;
+use ed25519_dalek::{ed25519::ComponentBytes, Signature};
 use proptest::prelude::*;
 
-use crate::signature::Eddsa;
+fn signature_strategy() -> impl Strategy<Value = Signature> {
+    <(ComponentBytes, ComponentBytes)>::arbitrary()
+        .prop_map(|(r, s)| Signature::from_components(r, s))
+}
 
 // #[test]
 // fn decodes_signatures() {
@@ -19,9 +22,8 @@ use crate::signature::Eddsa;
 
 proptest! {
     #[test]
-    fn signature_encode_agrees_with_decode(sig: Eddsa) {
-        let sig = Signature::from_components(sig.0.0, sig.1.0);
-        let encoded = crate::signature::encode(&sig);
+    fn signature_encode_agrees_with_decode(sig in signature_strategy()) {
+        let encoded = crate::signature::encode::<&[u8]>(&sig);
         let res = crate::signature::decode(&encoded);
         prop_assert!(res.is_ok());
         let decoded = res.unwrap();

@@ -1,21 +1,28 @@
 use proptest::prelude::*;
 use proptest::{sample::SizeRange, test_runner::TestCaseResult};
 
-use crate::de::{DecodeBytesError, DecodeToOwned};
+use crate::{
+    de::{DecodeBytesError, DecodeFromBytes},
+    symbol::Symbol,
+};
 
-#[allow(unsafe_code)]
-fn assert_correct_decode<'i, Output: std::fmt::Debug + PartialEq>(
+#[expect(unsafe_code)]
+fn assert_correct_decode<'i, Output, Expected>(
     input: &'i [u8],
     res: Result<(&'i [u8], Output), DecodeBytesError<'i>>,
-    expected: Output,
-) -> TestCaseResult {
+    expected: Expected,
+) -> TestCaseResult
+where
+    Output: std::fmt::Debug + PartialEq<Expected>,
+    Expected: std::fmt::Debug,
+{
     prop_assert!(
         res.is_ok(),
         "failed to decode input; input: {}, error: {}",
         String::from_utf8_lossy(input),
         unsafe { res.unwrap_err_unchecked() }
     );
-    #[allow(unsafe_code)]
+    #[expect(unsafe_code)]
     let (rem, res) = unsafe { res.unwrap_unchecked() };
     prop_assert!(
         rem.is_empty(),
@@ -23,7 +30,7 @@ fn assert_correct_decode<'i, Output: std::fmt::Debug + PartialEq>(
         String::from_utf8_lossy(input),
         String::from_utf8_lossy(rem)
     );
-    prop_assert_eq!(expected, res);
+    prop_assert_eq!(res, expected);
     Ok(())
 }
 
@@ -41,7 +48,7 @@ proptest! {
         input.reserve_exact(1 + bytes.len());
         input.push(b':');
         input.extend(&bytes);
-        let res = crate::bytes::decode_bytes(&input);
+        let res = crate::bytes::decode_bytes::<&[u8]>(&input);
         assert_correct_decode(&input, res, bytes)?;
     }
 
@@ -51,7 +58,7 @@ proptest! {
         input.reserve_exact(1 + s.len());
         input.push(b'"');
         input.extend(s.as_bytes());
-        let res = String::decode_bytes(&input);
+        let res = crate::decode_bytes!(&input => &str);
         assert_correct_decode(&input, res, s)?;
     }
 
@@ -61,8 +68,8 @@ proptest! {
         input.reserve_exact(1 + s.len());
         input.push(b'\'');
         input.extend(s.as_bytes());
-        let res = crate::symbol::decode_bytes(&input);
-        assert_correct_decode(&input, res, s)?;
+        let res = crate::decode_bytes!(&input => Symbol<&str>);
+        assert_correct_decode(&input, res, Symbol(s.as_str()))?;
     }
 
     // TODO :: test decoding to collections (vec/hashset/btreeset/hashmap/btreemap)
@@ -73,16 +80,16 @@ proptest! {
 
 mod int {
     use std::num::{
-        NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize, NonZeroU128,
-        NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize,
+        NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize, NonZeroU8,
+        NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize,
     };
 
-    use crate::de::{impl_decode::test::assert_correct_decode, DecodeToOwned};
+    use crate::de::{DecodeFromBytes, impl_decode::test::assert_correct_decode};
 
     #[inline]
-    fn decodes_int<Int: DecodeToOwned + std::fmt::Debug + PartialEq + Eq>(
+    fn decodes_int<'i, Int: DecodeFromBytes<'i> + std::fmt::Debug + PartialEq + Eq>(
         original: Int,
-        digits: &[u8],
+        digits: &'i [u8],
     ) -> Result<(), proptest::prelude::TestCaseError> {
         let res = Int::decode_bytes(digits);
         super::assert_correct_decode(digits, res, original)

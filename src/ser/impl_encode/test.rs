@@ -1,6 +1,6 @@
 use proptest::prelude::*;
 
-use crate::ser::EncodeExt;
+use crate::ser::EncodeIntoExt;
 
 #[test]
 fn encodes_bools() {
@@ -8,7 +8,6 @@ fn encodes_bools() {
     assert_eq!(false.encode_bytes(), b"f");
 }
 
-#[allow(edition_2024_expr_fragment_specifier)]
 macro_rules! prop_assert_eq_utf8 {
     ($left:expr, $right:expr $(,)?) => {{
         let (left, right) = ($left, $right);
@@ -52,7 +51,7 @@ proptest! {
         expected.extend_from_slice(&len_digits);
         expected.push(b'\'');
         expected.extend_from_slice(s.as_bytes());
-        prop_assert_eq_utf8!(crate::symbol::encode_bytes(&s), expected);
+        prop_assert_eq_utf8!(crate::symbol::encode::<&[u8], _>(s.as_bytes()).to_bytes().into_owned(), expected);
     }
 
     // TODO :: test encoding collections
@@ -61,7 +60,7 @@ proptest! {
 mod int {
     use proptest::prelude::*;
 
-    use crate::ser::EncodeExt;
+    use crate::ser::EncodeIntoExt;
 
     proptest! {
         #[test]

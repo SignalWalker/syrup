@@ -2,7 +2,7 @@
 members = ["lib/*"]
 
 [workspace.package]
-edition = "2021"
+edition = "2024"
 authors = ["Ash Walker <ash@ashwalker.net>"]
 repository = "https://git.ashwalker.net/Ash/syrup"
 license = "LGPL-3.0-or-later"
@@ -15,7 +15,7 @@ edition.workspace = true
 publish.workspace = true
 authors.workspace = true
 
-rust-version = "1.77"
+rust-version = "1.87"
 
 description = "A library for serializing/deserializing syrup data."
 readme = true
@@ -34,9 +34,13 @@ syrup-derive = { path = "./lib/syrup-derive", version = "^0.1", registry = "sign
 
 nom = { version = "^8" }
 
+borrow-or-share = "^0.2"
+
+static_assertions_next = "^1"
+
 [dev-dependencies]
 proptest = { version = "^1" }
-proptest-derive = "^0.5"
+# proptest-derive = "^0.5"
 
 [build-dependencies]
 

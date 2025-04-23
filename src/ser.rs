@@ -2,29 +2,41 @@ use crate::de::TokenTree;
 
 mod impl_encode;
 
-pub trait Encode {
+pub trait Encode<'input, OData> {
     /// Converts the given value to syrup tokens
-    fn encode(&self) -> TokenTree;
+    fn encode(&'input self) -> TokenTree<OData>;
+}
+
+pub trait EncodeInto<'input> {
+    /// Write the given value, as syrup data, to the given writer.
+    ///
+    /// Should be equivalent to `self.encode().write_bytes(w)`.
+    fn encode_into(&'input self, w: &mut impl std::io::Write) -> std::io::Result<usize>;
 }
 
 mod private {
     /// Exists only to prevent external implementation of certain traits
-    pub trait EncodeSealed {}
+    pub trait EncodeSealed<'input, OData> {}
+
+    pub trait EncodeIntoSealed<'input> {}
 }
 
-impl<T: Encode + ?Sized> private::EncodeSealed for T {}
+impl<'input, OData, T: Encode<'input, OData> + ?Sized> private::EncodeSealed<'input, OData> for T {}
 
-pub trait EncodeExt: Encode + private::EncodeSealed {
-    /// Converts the given value to syrup data
-    fn encode_bytes(&self) -> Vec<u8>;
+impl<'input, T: EncodeInto<'input> + ?Sized> private::EncodeIntoSealed<'input> for T {}
+
+pub trait EncodeIntoExt<'input>: EncodeInto<'input> + private::EncodeIntoSealed<'input> {
+    /// Converts the given value to syrup data.
+    fn encode_bytes(&'input self) -> Vec<u8>;
 }
 
-impl<T: ?Sized> EncodeExt for T
+impl<'input, T: ?Sized> EncodeIntoExt<'input> for T
 where
-    T: Encode,
+    T: EncodeInto<'input>,
 {
-    #[inline]
-    fn encode_bytes(&self) -> Vec<u8> {
-        self.encode().to_bytes()
+    fn encode_bytes(&'input self) -> Vec<u8> {
+        let mut res = Vec::new();
+        drop(self.encode_into(&mut res));
+        res
     }
 }

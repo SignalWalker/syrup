@@ -2,53 +2,60 @@ use proc_macro2::Span;
 use quote::quote;
 use syn::{
     parse_quote, parse_quote_spanned, punctuated::Punctuated, spanned::Spanned, token::Comma,
-    DeriveInput, Expr, ExprStruct, FieldValue, FieldsNamed, FieldsUnnamed, ImplItemFn, Index,
-    Lifetime, LifetimeParam, LitStr, Signature, Token,
+    DeriveInput, Expr, ExprStruct, FieldValue, FieldsNamed, FieldsUnnamed, GenericParam, Ident,
+    ImplItemFn, Index, Lifetime, LifetimeParam, LitStr, Member, Signature, Token, TypeParam,
+    WhereClause,
 };
 
 use crate::{Context, FieldAttr, OuterAttr};
 
 pub(crate) fn generate_decode(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
     fn generate_fields<'f>(
-        Context {
-            cow_ty,
+        context @ Context {
+            outer: OuterAttr { syrup, .. },
             decode_error_ty,
             result_ty,
             ..
         }: &Context,
+        _tree_lt: &Lifetime,
+        _idata_ty: &Ident,
         fields: impl IntoIterator<Item = &'f syn::Field>,
     ) -> syn::Result<Punctuated<FieldValue, Comma>> {
         let mut res = Punctuated::new();
         for (i, field) in fields.into_iter().enumerate() {
-            let (member, expected) = match field.ident.as_ref() {
-                Some(id) => (
-                    syn::Member::Named(id.clone()),
-                    LitStr::new(id.to_string().as_ref(), id.span()),
-                ),
-                None => (
-                    syn::Member::Unnamed(Index {
-                        index: i as u32,
-                        span: field.span(),
-                    }),
-                    LitStr::new(&format!("{i}th field"), field.span()),
-                ),
+            let (member, expected): (Member, Expr) = match field.ident.as_ref() {
+                Some(id) => {
+                    let id_str = LitStr::new(&id.to_string(), id.span());
+                    (
+                        syn::Member::Named(id.clone()),
+                        parse_quote_spanned! {field.span()=>#syrup::de::SyrupKind::Unknown(#id_str)},
+                    )
+                }
+                None => {
+                    let exp_str = LitStr::new(&format!("{i}th field"), field.span());
+                    (
+                        syn::Member::Unnamed(Index {
+                            index: i as u32,
+                            span: field.span(),
+                        }),
+                        parse_quote_spanned! {field.span()=>#syrup::de::SyrupKind::Unknown(#exp_str)},
+                    )
+                }
             };
-            let attr = FieldAttr::new(&field.attrs)?;
+            let attr = FieldAttr::new(context, field)?;
 
             let mut expr = parse_quote_spanned! {field.span()=>
                 match elements.get(#i) {
                     Some(el) => el,
-                    None => return #result_ty::Err(#decode_error_ty::missing(#cow_ty::Borrowed(#expected)))
+                    None => return #result_ty::Err(#decode_error_ty::Missing(#expected))
                 }
             };
 
-            expr = match attr.decode {
-                Some(decode) => parse_quote_spanned! {decode.span()=>
-                    #decode(#expr)?
-                },
-                None => parse_quote_spanned! {field.span()=>
-                    #expr.decode()?
-                },
+            expr = if let Some(decode) = attr.decode {
+                let dec = decode(&expr);
+                parse_quote_spanned! {dec.span()=>#dec?}
+            } else {
+                parse_quote_spanned! {field.span()=>#expr.decode()?}
             };
 
             res.push(FieldValue {
@@ -73,32 +80,84 @@ pub(crate) fn generate_decode(input: DeriveInput) -> syn::Result<proc_macro::Tok
             .collect(),
     };
 
+    let output_lt = Lifetime::new("'__output", Span::call_site());
+    let output_lt_param = LifetimeParam {
+        attrs: Vec::with_capacity(0),
+        lifetime: output_lt.clone(),
+        colon_token: Default::default(),
+        bounds: Default::default(),
+    };
+
+    let idata_ty = Ident::new("__IData", Span::call_site());
+    let idata_param = TypeParam {
+        attrs: Default::default(),
+        ident: idata_ty.clone(),
+        colon_token: None,
+        bounds: Default::default(),
+        eq_token: None,
+        default: None,
+    };
+
     let id = input.ident;
 
     let context = Context::new(OuterAttr::new(&id, &input.attrs)?);
 
     let Context {
-        outer: OuterAttr { syrup, label },
-        cow_ty,
+        outer:
+            OuterAttr {
+                syrup,
+                label,
+                decode_where,
+                ..
+            },
         token_tree_ty,
         decode_error_ty,
         result_ty,
         de_result_ty,
         literal_ty,
-        de_error_lt,
     } = &context;
 
-    let error_lt_param = LifetimeParam {
-        attrs: Vec::with_capacity(0),
-        lifetime: de_error_lt.clone(),
-        colon_token: Default::default(),
-        bounds: Default::default(),
-    };
-
-    let impl_params = &input.generics.params;
+    let mut impl_params = input.generics.params.clone();
+    impl_params.push(GenericParam::Type(idata_param.clone()));
     let (_, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    let decode_sig: Signature = parse_quote! {fn decode<#error_lt_param>(input: &#input_lt #syrup::de::TokenTree) -> #de_result_ty };
+    let mut where_clause = where_clause.cloned().unwrap_or(WhereClause {
+        where_token: Default::default(),
+        predicates: Default::default(),
+    });
+
+    where_clause.predicates.push(parse_quote! {
+        #idata_ty: #syrup::borrow_or_share::BorrowOrShare<#input_lt, #output_lt, [u8]>
+    });
+
+    if decode_where.is_empty() {
+        match &input.data {
+            syn::Data::Enum(_) => todo!("derive(Decode) for enums"),
+            syn::Data::Union(_) => todo!("derive(Decode) for unions"),
+            syn::Data::Struct(data) => match &data.fields {
+                syn::Fields::Unit => {}
+                syn::Fields::Named(FieldsNamed { named: fields, .. })
+                | syn::Fields::Unnamed(FieldsUnnamed {
+                    unnamed: fields, ..
+                }) => {
+                    for field in fields {
+                        let ty = &field.ty;
+                        where_clause
+                            .predicates
+                            .push(parse_quote_spanned! {ty.span()=>
+                                #ty: #syrup::Decode<#input_lt, #idata_ty>
+                            });
+                    }
+                }
+            },
+        }
+    }
+
+    for pred in decode_where {
+        where_clause.predicates.push(pred.clone());
+    }
+
+    let decode_sig: Signature = parse_quote! {fn decode(input: &#input_lt #syrup::de::TokenTree<#idata_ty>) -> #de_result_ty };
 
     let decode_fn: ImplItemFn = match input.data {
         syn::Data::Union(u) => {
@@ -115,17 +174,17 @@ pub(crate) fn generate_decode(input: DeriveInput) -> syn::Result<proc_macro::Tok
         }
         syn::Data::Struct(data) => {
             let label_expr: Expr = parse_quote_spanned! {label.span()=> {
-                #[allow(clippy::string_lit_as_bytes)]
+                #[expect(clippy::string_lit_as_bytes)]
                 match label {
-                    #token_tree_ty::Literal(#literal_ty::Symbol(label_sym)) => if label_sym != #label.as_bytes() {
+                    #token_tree_ty::Literal(#literal_ty::Symbol(label_sym)) => if label_sym.borrow_or_share() != #label.as_bytes() {
                         return #result_ty::Err(#decode_error_ty::unexpected(
-                            #cow_ty::Borrowed(#label),
-                            label.clone(),
+                            #syrup::de::SyrupKind::Symbol(::std::option::Option::Some(#label)),
+                            label
                         ))
                     },
                     _ => return #result_ty::Err(#decode_error_ty::unexpected(
-                            #cow_ty::Borrowed(#label),
-                            label.clone(),
+                            #syrup::de::SyrupKind::Symbol(::std::option::Option::Some(#label)),
+                            label,
                         ))
                 }
             }};
@@ -139,7 +198,7 @@ pub(crate) fn generate_decode(input: DeriveInput) -> syn::Result<proc_macro::Tok
                         qself: None,
                         path: parse_quote! { Self },
                         brace_token: Default::default(),
-                        fields: generate_fields(&context, fields)?,
+                        fields: generate_fields(&context, &input_lt, &idata_ty, fields)?,
                         dot2_token: None,
                         rest: None,
                     };
@@ -159,8 +218,8 @@ pub(crate) fn generate_decode(input: DeriveInput) -> syn::Result<proc_macro::Tok
                             #res_expr
                         },
                         _ => #result_ty::Err(#decode_error_ty::unexpected(
-                            #cow_ty::Borrowed(#label),
-                            input.clone(),
+                            #syrup::de::SyrupKind::Record { label: ::std::option::Option::Some(#label) },
+                            input,
                         ))
                     }
                 }
@@ -170,7 +229,7 @@ pub(crate) fn generate_decode(input: DeriveInput) -> syn::Result<proc_macro::Tok
 
     Ok(quote! {
         #[automatically_derived]
-        impl<#input_lt_param, #impl_params> #syrup::Decode<#input_lt> for #id #ty_generics #where_clause {
+        impl<#input_lt_param, #output_lt_param, #impl_params> #syrup::Decode<#input_lt, #idata_ty> for #id #ty_generics #where_clause {
             #decode_fn
         }
     }.into())
