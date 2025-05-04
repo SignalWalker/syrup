@@ -75,6 +75,15 @@ pub(crate) fn generate_encode(input: DeriveInput) -> syn::Result<proc_macro::Tok
         colon_token: Default::default(),
         bounds: Default::default(),
     };
+
+    let output_lt = Lifetime::new("'__output", Span::call_site());
+    let output_lt_param = LifetimeParam {
+        attrs: Vec::with_capacity(0),
+        lifetime: output_lt.clone(),
+        colon_token: Default::default(),
+        bounds: Default::default(),
+    };
+
     let id = &input.ident;
 
     let odata_ty: Ident = Ident::new("__OData", Span::call_site());
@@ -170,7 +179,7 @@ pub(crate) fn generate_encode(input: DeriveInput) -> syn::Result<proc_macro::Tok
             };
             let res = quote! {
                 #[automatically_derived]
-                impl<#label_lt_param, #input_lt_param, #impl_params> #syrup::Encode<#input_lt, #odata_ty> for #id #ty_generics #where_clause {
+                impl<#label_lt_param, #input_lt_param, #output_lt_param, #impl_params> #syrup::Encode<#input_lt, #odata_ty> for #id #ty_generics #where_clause {
                     fn encode(&#input_lt self) -> #syrup::TokenTree<#odata_ty> {
                         #syrup::TokenTree::Record(::std::boxed::Box::new(#syrup::de::Record {
                             label: #syrup::TokenTree::Literal(#syrup::de::Literal::Symbol(#label.as_bytes().into())),
